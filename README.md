@@ -1,5 +1,14 @@
 # MemForest
 
+Official implementation of **MemForest: An Efficient Agent Memory System with Hierarchical Temporal Indexing**.
+
+## Paper
+
+- VLDB submission (12 pages): [paper/MemForest_VLDB_submit.pdf](paper/MemForest_VLDB_submit.pdf)
+- Extended version with appendix as supplemental material: [paper/MemForest_with_Appendix.pdf](paper/MemForest_with_Appendix.pdf)
+
+## Overview
+
 MemForest is a long-term conversation memory system for LLM agents. It extracts atomic facts from dialogue, organizes them in hierarchical memory trees (session, entity, scene), and serves them through a recall → plan → browse → rerank query pipeline.
 
 Core ideas:
@@ -20,8 +29,8 @@ python -m pip install -r requirements.txt
 ## Configuration
 
 Default configurations live in [src/config/](src/config/):
-- [src/config/default.yaml](src/config/default.yaml) — 30B-class model setup
-- [src/config/default_4b.yaml](src/config/default_4b.yaml) — 4B-class model setup
+- [src/config/default.yaml](src/config/default.yaml) — Qwen3-30B model setup
+- [src/config/default_4b.yaml](src/config/default_4b.yaml) — Qwen3-4B model setup
 
 Each config defines an OpenAI-compatible LLM endpoint, an embedding endpoint, and per-step overrides (extraction, tree summarization, query). To target your own model server, edit the `url`, `model_name`, and `key` fields, or override them via environment variables consumed by [src/config/config.py](src/config/config.py).
 
@@ -98,3 +107,16 @@ Runtime artifacts are written under the `snapshot_dir` passed to `MemForest` (on
 ├── trees/         serialized session/entity/scene trees
 └── logs/          retrieval traces and per-step API logs
 ```
+
+## Benchmark results
+
+Per-question accuracy tables backing the numbers reported in the paper live under [benchmark/](benchmark/). Each row contains the question, gold answer, and the model answer plus LLM-judge verdict (`judge_1` … `judge_8`) for eight independent runs.
+
+| Benchmark | Model size | File |
+|---|---|---|
+| LoCoMo | Qwen3-30B | [benchmark/locomo_per_question_30b.csv](benchmark/locomo_per_question_30b.csv) |
+| LoCoMo | Qwen3-4B | [benchmark/locomo_per_question_4b.csv](benchmark/locomo_per_question_4b.csv) |
+| LongMemEval-S | Qwen3-30B | [benchmark/longmemeval_per_question_30b.csv](benchmark/longmemeval_per_question_30b.csv) |
+| LongMemEval-S | Qwen3-4B | [benchmark/longmemeval_per_question_4b.csv](benchmark/longmemeval_per_question_4b.csv) |
+
+Columns: `method, model_size, question_type, qid, question, gold_answer, answer_{1..8}, judge_{1..8}`.
