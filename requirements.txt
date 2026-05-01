@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn==0.32.1
+pydantic==2.10.3
+pyyaml==6.0.2
+numpy==2.2.0
+faiss-cpu==1.9.0.post1
+openai==1.57.4
+aiosqlite==0.20.0
+httpx==0.28.1
+tqdm==4.67.1
+pytest==8.3.4
+pytest-asyncio==0.24.0

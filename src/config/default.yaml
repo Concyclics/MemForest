@@ -1,0 +1,112 @@
+default_timezone: "UTC"
+
+model:
+  llm:
+    global:
+      url: "http://127.0.0.1:8001/v1"
+      model_name: "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+      key: "EMPTY"
+      topk: 20
+      top_p: 0.8
+      max_token: 1024
+      temperature: 0.7
+    steps:
+      extraction:
+        model_name: "global"
+        temperature: 0.0
+        max_token: 4096
+  embedding:
+    global:
+      url: "http://127.0.0.1:8002/v1"
+      model_name: "Qwen/Qwen3-Embedding-0.6B"
+      key: "EMPTY"
+      dimension: 1024
+
+extraction:
+  memcell_max_turns: 2      # ablation: turn2 optimal (99% support, 9.8x tok efficiency vs whole)
+  memcell_max_chars: 8000   # safety net; turn count is the primary chunking axis
+  memcell_max_time_gap_seconds: 21600
+  memcell_hard_boundary_markers:
+    - "--- topic"
+    - "--- session"
+    - "new topic:"
+    - "switching gears"
+  max_items_per_cell: 15
+  max_assistant_items_per_cell: 4
+  max_topics_per_item: 3
+  max_attribute_keys_per_item: 2
+  max_domain_keys_per_item: 2
+  max_collection_keys_per_item: 2
+  max_workers: 512
+  max_inflight_requests: 512
+  fact_manager:
+    enabled: false
+    storage_dir: "data/index/vnext_fact_manager"
+    persist_on_write: false
+    top_k: 8
+    similarity_threshold: 0.93   # was 0.972; near-paraphrase duplicates cluster at 0.90–0.97, knowledge-update pairs at 0.67–0.79; 0.93 captures the former without merging the latter
+    max_llm_pairs_per_item: 4
+    normalize_embeddings: true
+
+tree:
+  storage_dir: "data/index/trees"
+  root_index_dir: "data/index/root_index"
+  session:
+    k: 3
+    summary_max_words: 200
+  entity:
+    user_k: 8          # was 5; reduces entity:user depth from 4→3 for ~500 facts
+    entity_k: 8
+    active_min_facts: 3
+    active_min_sessions: 2
+    suppress_below_facts: 2
+    max_user_tree_size: 500
+    max_entity_tree_size: 100
+    summary_max_words: 250
+  scene:
+    k: 10
+    max_cluster_size: 60   # was 150; domain-gated routing needs smaller per-domain sub-clusters
+    bootstrap_cluster_count: 30  # was 20; more seeds to cover more domains at bootstrap
+    bootstrap_min_facts: 24
+    bootstrap_max_facts: 400
+    theta_assign: 0.70     # was 0.65; domain gate handles coarse relevance, embedding does fine
+    theta_second: 0.70     # was 0.55; much stricter dual assignment within same domain
+    theta_spawn: 0.58      # was 0.54; within a domain, spawn sub-cluster when similarity is low
+    theta_merge: 0.88
+    merge_check_interval: 500
+    max_time_gap_days: 45
+    summary_max_words: 200
+  summary_manager:
+    max_inflight: 512
+    temperature: 0.0
+    max_tokens: 4096    # was 2048; n≥800 top-level rollups truncate at 2048 → silent empty summary
+    top_p: 0.8
+    max_retries: 2
+    timeout_sec: 60.0
+
+logger:
+  api:
+    enabled: true
+    path: "data/logs/src_api_calls.jsonl"
+  extraction:
+    enabled: true
+    path: "data/logs/src_extraction_requests.jsonl"
+
+query:
+  mode: agentic              # "lightweight" (0 LLM) | "agentic" (1 planner LLM)
+  node_index_vector_dim: 1024
+  recall:
+    top_k: 10                # PU10: union TD∪BU at K=10 → 99% essential coverage on 60q
+    direction: union         # "td" | "bu" | "union"; union = TD top_k ∪ BU top_k deduped
+    bu_top_m: 30             # BU fact over-fetch before back-project to trees
+    force_entity_user: true  # entity:user always force-appended if not in top_k
+    llm_rerank: false        # true → LLM reranks top-20 to top_k; ablation: -7pp @K=8, avoid
+    llm_rerank_overfetch: 20
+  browse:
+    beam_width: 10           # 60q e2e: beam=10 → 79.2% answer correct (PU10_F4, v5 judge); +7.5pp vs beam=3
+    max_facts: 0             # 0 = no truncation; pass full browse output to answerer (ablation 79.2% setup)
+    llm_guided: true         # LLM ranks children per internal node (matches ablation F4)
+    llm_guided_all_types: true  # apply LLM guidance to all trees, not just anchor/preference
+    max_workers: 512
+  planner:
+    enabled: true            # false → pass-through (all trees get sub_query = question)
