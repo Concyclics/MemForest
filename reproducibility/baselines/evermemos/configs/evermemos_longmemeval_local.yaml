@@ -1,0 +1,24 @@
+# EverMemOS local LLM + local embedding for full LongMemEval S run
+
+name: "evermemos_longmemeval_local"
+version: "1.0"
+description: "EverMemOS on full LongMemEval S with local Qwen LLM and local embedding"
+
+adapter: "evermemos"
+
+llm:
+  provider: "openai"
+  model: "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+  api_key: "EMPTY"
+  base_url: "${EVAL_LLM_BASE_URL:http://localhost:8001/v1}"
+  temperature: 0.3
+  max_tokens: 8192
+
+add:
+  num_workers: 16
+  event_log_num_workers: 512
+
+search:
+  mode: "agentic"
+  use_hybrid_search: true
+  response_top_k: 10

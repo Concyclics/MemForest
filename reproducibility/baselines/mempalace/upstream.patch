@@ -1,0 +1,601 @@
+diff --git a/benchmarks/locomo_bench.py b/benchmarks/locomo_bench.py
+index 4b047a05371c04507aaa63269f2ec3cafbfa3bc5..976a657734ae8212bf577f3df542532df511f2aa 100644
+--- a/benchmarks/locomo_bench.py
++++ b/benchmarks/locomo_bench.py
+@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
+ # ── Optional bge-large embeddings ────────────────────────────────────────────
+ _fastembed_model = None
++_openai_embedding_client = None
+ 
+ 
+ def _get_embedder(model_name: str):
+@@ -61,6 +62,26 @@ def _embed(texts: list, embed_model: str) -> list:
+     """Embed a list of texts. Returns list of float lists, or None for default."""
+     if not embed_model or embed_model == "default":
+         return None
++    if embed_model == "openai":
++        global _openai_embedding_client
++        if _openai_embedding_client is None:
++            from openai import OpenAI
++
++            _openai_embedding_client = OpenAI(
++                api_key=os.environ.get("MEMPALACE_EMBEDDING_API_KEY", "EMPTY"),
++                base_url=os.environ.get("MEMPALACE_EMBEDDING_BASE_URL", "http://127.0.0.1:8003/v1"),
++            )
++            print(
++                "  Using OpenAI-compatible embedding model: "
++                f"{os.environ.get('MEMPALACE_EMBEDDING_MODEL', 'Qwen/Qwen3-Embedding-0.6B')} "
++                f"@ {os.environ.get('MEMPALACE_EMBEDDING_BASE_URL', 'http://127.0.0.1:8003/v1')}"
++            )
++        response = _openai_embedding_client.embeddings.create(
++            model=os.environ.get("MEMPALACE_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
++            input=list(texts),
++            dimensions=int(os.environ.get("MEMPALACE_EMBEDDING_DIMS", "1024")),
++        )
++        return [item.embedding for item in response.data]
+     embedder = _get_embedder(embed_model)
+     return [vec.tolist() for vec in embedder.embed(texts)]
+ 
+@@ -1039,8 +1060,9 @@ if __name__ == "__main__":
+     parser.add_argument(
+         "--embed-model",
+         default="default",
+-        help="Embedding model: 'default' (ChromaDB built-in) or "
+-        "'BAAI/bge-large-en-v1.5' (requires fastembed)",
++        help="Embedding model: 'default' (ChromaDB built-in), 'openai' "
++        "(OpenAI-compatible endpoint configured by MEMPALACE_EMBEDDING_*), "
++        "or a fastembed model such as 'BAAI/bge-large-en-v1.5'.",
+     )
+     args = parser.parse_args()
+ 
+diff --git a/benchmarks/longmemeval_bench.py b/benchmarks/longmemeval_bench.py
+index 2c186a7f1a93a85e981af69086d3968a4daf71d6..37240cd3eefbb70aa12d551aab8edf56376925f1 100644
+--- a/benchmarks/longmemeval_bench.py
++++ b/benchmarks/longmemeval_bench.py
+@@ -35,9 +35,11 @@ import re
+ import json
+ import argparse
+ import math
++import time
++import threading
+ from pathlib import Path
+ from collections import defaultdict
+-from datetime import datetime
++from datetime import datetime, timezone
+ 
+ import chromadb
+ 
+@@ -99,6 +101,97 @@ _bench_client = chromadb.EphemeralClient()
+ # Global embedding function — set by --embed-model arg before benchmark runs.
+ # None = use ChromaDB default (all-MiniLM-L6-v2).
+ _bench_embed_fn = None
++_perf_dir = None
++_perf_lock = threading.Lock()
++
++
++def _utc_now_iso():
++    return datetime.now(timezone.utc).isoformat()
++
++
++def _perf_append_jsonl(filename, payload):
++    global _perf_dir
++    if not _perf_dir:
++        return
++    path = Path(_perf_dir) / filename
++    path.parent.mkdir(parents=True, exist_ok=True)
++    line = json.dumps(payload, ensure_ascii=False, default=str)
++    with _perf_lock:
++        with open(path, "a", encoding="utf-8") as f:
++            f.write(line)
++            f.write("\n")
++
++
++def _configure_perf_dir(perf_dir):
++    global _perf_dir
++    _perf_dir = perf_dir
++    if _perf_dir:
++        Path(_perf_dir).mkdir(parents=True, exist_ok=True)
++
++
++def _log_stage_timing(stage, duration_seconds, **kwargs):
++    _perf_append_jsonl(
++        "stage_timings.jsonl",
++        {
++            "timestamp": _utc_now_iso(),
++            "stage": stage,
++            "duration_seconds": duration_seconds,
++            **kwargs,
++        },
++    )
++
++
++def _log_llm_call(stage, model, prompt, response_text, duration_seconds, usage=None, error=None, **kwargs):
++    _perf_append_jsonl(
++        "llm_calls.jsonl",
++        {
++            "timestamp": _utc_now_iso(),
++            "stage": stage,
++            "provider": "openai-compatible" if _uses_openai_compatible(model) else "anthropic",
++            "model": model,
++            "duration_seconds": duration_seconds,
++            "prompt": prompt,
++            "response": response_text,
++            "usage": usage or {},
++            "error": error,
++            **kwargs,
++        },
++    )
++
++
++def _uses_openai_compatible(model: str) -> bool:
++    model_l = str(model or "").lower()
++    return bool(os.environ.get("MEMPALACE_LLM_BASE_URL")) or model_l.startswith("deepseek")
++
++
++def _openai_chat_completion(api_key: str, model: str, prompt: str, max_tokens: int, timeout: int):
++    import urllib.request as _urllib_request
++
++    base_url = os.environ.get("MEMPALACE_LLM_BASE_URL")
++    if not base_url:
++        base_url = "https://api.deepseek.com/v1" if str(model).lower().startswith("deepseek") else "https://api.openai.com/v1"
++    url = base_url.rstrip("/") + "/chat/completions"
++    payload = json.dumps(
++        {
++            "model": model,
++            "max_tokens": max_tokens,
++            "temperature": 0,
++            "messages": [{"role": "user", "content": prompt}],
++        }
++    ).encode("utf-8")
++    req = _urllib_request.Request(
++        url,
++        data=payload,
++        headers={
++            "authorization": f"Bearer {api_key}",
++            "content-type": "application/json",
++        },
++        method="POST",
++    )
++    with _urllib_request.urlopen(req, timeout=timeout) as resp:
++        result = json.loads(resp.read())
++    raw = result["choices"][0]["message"].get("content", "").strip()
++    return raw, result.get("usage", {}) if isinstance(result, dict) else {}
+ 
+ 
+ def _make_embed_fn(model_name: str):
+@@ -107,6 +200,7 @@ def _make_embed_fn(model_name: str):
+ 
+     Supported:
+         default   — ChromaDB default (all-MiniLM-L6-v2, 384-dim)
++        openai    — OpenAI-compatible embedding endpoint from MEMPALACE_EMBEDDING_* env vars
+         bge-base  — BAAI/bge-base-en-v1.5 (768-dim) via fastembed
+         bge-large — BAAI/bge-large-en-v1.5 (1024-dim) via fastembed
+         nomic     — nomic-ai/nomic-embed-text-v1.5 (768-dim) via fastembed
+@@ -115,6 +209,33 @@ def _make_embed_fn(model_name: str):
+     if model_name == "default" or not model_name:
+         return None  # ChromaDB default
+ 
++    if model_name == "openai":
++        from openai import OpenAI
++        from chromadb.api.types import EmbeddingFunction, Documents, Embeddings
++
++        class _OpenAIEmbedFn(EmbeddingFunction):
++            def __init__(self):
++                self.model = os.environ.get("MEMPALACE_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
++                self.dims = int(os.environ.get("MEMPALACE_EMBEDDING_DIMS", "1024"))
++                self.client = OpenAI(
++                    api_key=os.environ.get("MEMPALACE_EMBEDDING_API_KEY", "EMPTY"),
++                    base_url=os.environ.get("MEMPALACE_EMBEDDING_BASE_URL", "http://127.0.0.1:8003/v1"),
++                )
++                print(
++                    f"  Using OpenAI-compatible embedding model: {self.model} "
++                    f"@ {os.environ.get('MEMPALACE_EMBEDDING_BASE_URL', 'http://127.0.0.1:8003/v1')}"
++                )
++
++            def __call__(self, input: Documents) -> Embeddings:
++                resp = self.client.embeddings.create(
++                    model=self.model,
++                    input=list(input),
++                    dimensions=self.dims,
++                )
++                return [item.embedding for item in resp.data]
++
++        return _OpenAIEmbedFn()
++
+     MODEL_MAP = {
+         "bge-base": "BAAI/bge-base-en-v1.5",
+         "bge-large": "BAAI/bge-large-en-v1.5",
+@@ -2408,6 +2529,43 @@ def diary_ingest_session(session, sess_id, api_key, model="claude-haiku-4-5-2025
+         "- Return ONLY valid JSON. No markdown, no explanation."
+     )
+ 
++    start = time.perf_counter()
++    if _uses_openai_compatible(model):
++        response_text = ""
++        usage = {}
++        error = None
++        try:
++            response_text, usage = _openai_chat_completion(api_key, model, prompt, max_tokens=200, timeout=25)
++            raw = re.sub(r"^```(?:json)?\s*", "", response_text)
++            raw = re.sub(r"\s*```$", "", raw)
++            data = json.loads(raw)
++            if "topics" in data and "summary" in data:
++                _log_llm_call(
++                    "diary_ingest",
++                    model,
++                    prompt,
++                    response_text,
++                    time.perf_counter() - start,
++                    usage=usage,
++                    error=None,
++                    session_id=sess_id,
++                )
++                return data
++            error = "missing_expected_fields"
++        except Exception as exc:
++            error = str(exc)
++        _log_llm_call(
++            "diary_ingest",
++            model,
++            prompt,
++            response_text,
++            time.perf_counter() - start,
++            usage=usage,
++            error=error,
++            session_id=sess_id,
++        )
++        return None
++
+     payload = json.dumps(
+         {
+             "model": model,
+@@ -2427,17 +2585,45 @@ def diary_ingest_session(session, sess_id, api_key, model="claude-haiku-4-5-2025
+         method="POST",
+     )
+ 
++    start = time.perf_counter()
++    response_text = ""
++    usage = {}
++    error = None
+     try:
+         with _urllib_request.urlopen(req, timeout=25) as resp:
+             result = json.loads(resp.read())
++        usage = result.get("usage", {}) if isinstance(result, dict) else {}
+         raw = result["content"][0]["text"].strip()
++        response_text = raw
+         raw = re.sub(r"^```(?:json)?\s*", "", raw)
+         raw = re.sub(r"\s*```$", "", raw)
+         data = json.loads(raw)
+         if "topics" in data and "summary" in data:
++            _log_llm_call(
++                "diary_ingest",
++                model,
++                prompt,
++                response_text,
++                time.perf_counter() - start,
++                usage=usage,
++                error=None,
++                session_id=sess_id,
++            )
+             return data
+-    except Exception:
+-        pass  # timeout, network error, bad JSON — fall through to None
++        error = "missing_expected_fields"
++    except Exception as exc:
++        error = str(exc)
++
++    _log_llm_call(
++        "diary_ingest",
++        model,
++        prompt,
++        response_text,
++        time.perf_counter() - start,
++        usage=usage,
++        error=error,
++        session_id=sess_id,
++    )
+ 
+     return None
+ 
+@@ -2763,7 +2949,15 @@ def build_palace_and_retrieve_diary(
+ 
+ 
+ def llm_rerank(
+-    question, rankings, corpus, corpus_ids, api_key, top_k=10, model="claude-haiku-4-5-20251001"
++    question,
++    rankings,
++    corpus,
++    corpus_ids,
++    api_key,
++    top_k=10,
++    model="claude-haiku-4-5-20251001",
++    question_id=None,
++    question_type=None,
+ ):
+     """
+     Use an LLM to re-rank the top-k retrieved sessions.
+@@ -2813,6 +3007,46 @@ def llm_rerank(
+         f"Most relevant session number:"
+     )
+ 
++    start = time.perf_counter()
++    response_text = ""
++    usage = {}
++    error = None
++    if _uses_openai_compatible(model):
++        try:
++            response_text, usage = _openai_chat_completion(api_key, model, prompt, max_tokens=8, timeout=20)
++            m = re.search(r"\b(\d+)\b", response_text)
++            if m:
++                pick = int(m.group(1))
++                if 1 <= pick <= len(candidates):
++                    chosen_idx = candidates[pick - 1]
++                    _log_llm_call(
++                        "llm_rerank",
++                        model,
++                        prompt,
++                        response_text,
++                        time.perf_counter() - start,
++                        usage=usage,
++                        error=None,
++                        question_id=question_id,
++                        question_type=question_type,
++                    )
++                    return [chosen_idx] + [i for i in rankings if i != chosen_idx]
++            error = "unparseable_pick"
++        except Exception as exc:
++            error = str(exc)
++        _log_llm_call(
++            "llm_rerank",
++            model,
++            prompt,
++            response_text,
++            time.perf_counter() - start,
++            usage=usage,
++            error=error,
++            question_id=question_id,
++            question_type=question_type,
++        )
++        return rankings
++
+     payload = json.dumps(
+         {
+             "model": model,
+@@ -2834,29 +3068,60 @@ def llm_rerank(
+ 
+     import socket as _socket
+ 
++    start = time.perf_counter()
++    response_text = ""
++    usage = {}
++    error = None
+     for _attempt in range(3):
+         try:
+             with urllib.request.urlopen(req, timeout=20) as resp:
+                 result = json.loads(resp.read())
++            usage = result.get("usage", {}) if isinstance(result, dict) else {}
+             raw = result["content"][0]["text"].strip()
++            response_text = raw
+             # Parse just the first integer from Haiku's response
+             m = re.search(r"\b(\d+)\b", raw)
+             if m:
+                 pick = int(m.group(1))
+                 if 1 <= pick <= len(candidates):
+                     chosen_idx = candidates[pick - 1]
++                    _log_llm_call(
++                        "llm_rerank",
++                        model,
++                        prompt,
++                        response_text,
++                        time.perf_counter() - start,
++                        usage=usage,
++                        error=None,
++                        question_id=question_id,
++                        question_type=question_type,
++                    )
+                     reordered = [chosen_idx] + [i for i in rankings if i != chosen_idx]
+                     return reordered
++            error = "unparseable_pick"
+             break  # Got a response, even if unparseable — don't retry
+         except (_socket.timeout, TimeoutError):
++            error = "timeout"
+             if _attempt < 2:
+                 import time as _time
+ 
+                 _time.sleep(3)  # brief pause then retry
+             # else fall through to return rankings
+-        except (urllib.error.URLError, KeyError, ValueError, IndexError, OSError):
++        except (urllib.error.URLError, KeyError, ValueError, IndexError, OSError) as exc:
++            error = str(exc)
+             break  # Non-timeout error — fall back immediately
+ 
++    _log_llm_call(
++        "llm_rerank",
++        model,
++        prompt,
++        response_text,
++        time.perf_counter() - start,
++        usage=usage,
++        error=error,
++        question_id=question_id,
++        question_type=question_type,
++    )
+     return rankings
+ 
+ 
+@@ -2939,6 +3204,7 @@ def run_benchmark(
+     skip_precompute=False,
+     split_file=None,
+     split_subset=None,
++    perf_dir=None,
+ ):
+     """Run the full benchmark.
+ 
+@@ -2949,6 +3215,8 @@ def run_benchmark(
+     with open(data_file) as f:
+         data = json.load(f)
+ 
++    _configure_perf_dir(perf_dir)
++
+     # Apply train/test split filter before limit/skip
+     if split_file and split_subset:
+         split = _load_or_create_split(split_file, data)
+@@ -3006,11 +3274,18 @@ def run_benchmark(
+             done = 0
+             cache_path = Path(diary_cache_file) if diary_cache_file else None
+             for sess_id, session in unique_sessions.items():
++                sess_start = time.perf_counter()
+                 try:
+                     result = diary_ingest_session(session, sess_id, api_key, model=llm_model)
+                 except Exception:
+                     result = None
+                 diary_cache[sess_id] = result
++                _log_stage_timing(
++                    "diary_precompute_session",
++                    time.perf_counter() - sess_start,
++                    session_id=sess_id,
++                    mode=mode,
++                )
+                 done += 1
+                 if done % 50 == 0:
+                     print(f"    {done}/{len(unique_sessions)} sessions ingested...")
+@@ -3063,8 +3338,12 @@ def run_benchmark(
+         qtype = entry["question_type"]
+         question = entry["question"]
+         answer_sids = set(entry["answer_session_ids"])
++        question_start = time.perf_counter()
++        retrieval_seconds = 0.0
++        rerank_seconds = 0.0
+ 
+         # Run retrieval with selected mode
++        retrieval_start = time.perf_counter()
+         if mode == "aaak":
+             rankings, corpus, corpus_ids, corpus_timestamps = build_palace_and_retrieve_aaak(
+                 entry, granularity=granularity
+@@ -3112,6 +3391,16 @@ def run_benchmark(
+             rankings, corpus, corpus_ids, corpus_timestamps = build_palace_and_retrieve(
+                 entry, granularity=granularity
+             )
++        retrieval_seconds = time.perf_counter() - retrieval_start
++        _log_stage_timing(
++            "retrieval",
++            retrieval_seconds,
++            question_id=qid,
++            question_type=qtype,
++            mode=mode,
++            granularity=granularity,
++            corpus_size=len(corpus_ids),
++        )
+ 
+         if not rankings:
+             print(f"  [{i + 1:4}/{len(data)}] {qid[:30]:30} SKIP (empty corpus)")
+@@ -3120,8 +3409,26 @@ def run_benchmark(
+         # Optional LLM re-ranking pass (larger pool for v3/palace to catch rank-11-12 misses)
+         if llm_rerank_enabled:
+             rerank_pool = 20 if mode in ("hybrid_v3", "hybrid_v4", "palace") else 10
++            rerank_start = time.perf_counter()
+             rankings = llm_rerank(
+-                question, rankings, corpus, corpus_ids, api_key, top_k=rerank_pool, model=llm_model
++                question,
++                rankings,
++                corpus,
++                corpus_ids,
++                api_key,
++                top_k=rerank_pool,
++                model=llm_model,
++                question_id=qid,
++                question_type=qtype,
++            )
++            rerank_seconds = time.perf_counter() - rerank_start
++            _log_stage_timing(
++                "rerank",
++                rerank_seconds,
++                question_id=qid,
++                question_type=qtype,
++                mode=mode,
++                top_k=rerank_pool,
+             )
+ 
+         # Evaluate at session level
+@@ -3175,7 +3482,15 @@ def run_benchmark(
+                 "question_id": qid,
+                 "question_type": qtype,
+                 "question": question,
++                "question_date": entry.get("question_date"),
+                 "answer": entry["answer"],
++                "answer_session_ids": entry.get("answer_session_ids", []),
++                "performance": {
++                    "retrieval_seconds": retrieval_seconds,
++                    "rerank_seconds": rerank_seconds,
++                    "question_total_seconds": time.perf_counter() - question_start,
++                    "corpus_size": len(corpus_ids),
++                },
+                 "retrieval_results": {
+                     "query": question,
+                     "ranked_items": ranked_items,
+@@ -3183,6 +3498,14 @@ def run_benchmark(
+                 },
+             }
+         )
++        _log_stage_timing(
++            "question_total",
++            time.perf_counter() - question_start,
++            question_id=qid,
++            question_type=qtype,
++            mode=mode,
++            granularity=granularity,
++        )
+ 
+         # Progress
+         r5 = metrics_session["recall_any@5"][-1]
+@@ -3218,6 +3541,19 @@ def run_benchmark(
+ 
+     print(f"\n{'=' * 60}\n")
+ 
++    if _perf_dir:
++        summary_payload = {
++            "timestamp": _utc_now_iso(),
++            "mode": mode,
++            "granularity": granularity,
++            "question_count": len(data),
++            "elapsed_seconds": elapsed,
++            "seconds_per_question": (elapsed / len(data)) if data else 0.0,
++            "out_file": out_file,
++        }
++        with open(Path(_perf_dir) / "run_summary.json", "w", encoding="utf-8") as f:
++            json.dump(summary_payload, f, ensure_ascii=False, indent=2)
++
+     # Save diary cache for reuse (Sonnet run tomorrow can skip re-ingesting)
+     # Only save sessions with real data (None = skipped inline call, not worth persisting)
+     if mode == "diary" and diary_cache and diary_cache_file:
+@@ -3315,9 +3651,10 @@ if __name__ == "__main__":
+     )
+     parser.add_argument(
+         "--embed-model",
+-        choices=["default", "bge-base", "bge-large", "nomic", "mxbai"],
++        choices=["default", "openai", "bge-base", "bge-large", "nomic", "mxbai"],
+         default="default",
+         help="Embedding model. 'default'=all-MiniLM-L6-v2 (ChromaDB built-in, baseline). "
++        "'openai'=OpenAI-compatible endpoint configured by MEMPALACE_EMBEDDING_* env vars. "
+         "'bge-large'=BAAI/bge-large-en-v1.5 (best local, 1024-dim, ~1.3GB via fastembed). "
+         "'nomic'=nomic-embed-text-v1.5 (768-dim, fast, ~274MB). "
+         "'bge-base'=BAAI/bge-base-en-v1.5 (768-dim, balanced). "
+@@ -3352,6 +3689,11 @@ if __name__ == "__main__":
+         "Use sparingly — looking at results contaminates the held-out set. "
+         "Requires --split-file.",
+     )
++    parser.add_argument(
++        "--perf-dir",
++        default=None,
++        help="Optional directory for performance logs (llm_calls.jsonl, stage_timings.jsonl, run_summary.json).",
++    )
+     args = parser.parse_args()
+ 
+     # ── Handle --create-split ───────────────────────────────────────────────
+@@ -3402,4 +3744,5 @@ if __name__ == "__main__":
+         args.skip_precompute,
+         split_file=args.split_file,
+         split_subset=split_subset,
++        perf_dir=args.perf_dir,
+     )

@@ -1,0 +1,2673 @@
+diff --git a/eval/evalution_loco.py b/eval/evalution_loco.py
+index 60340384d8277ec4804d9da9a605bdace430117e..61354a466ccb7a7f0e99d07f1274e61193736788 100644
+--- a/eval/evalution_loco.py
++++ b/eval/evalution_loco.py
+@@ -1,4 +1,5 @@
+ import json
++import os
+ import re
+ from typing import List, Dict
+ from collections import defaultdict
+@@ -67,5 +68,5 @@ def main(file_path: str):
+         print(f"Category {category}: Average F1 Score = {avg_f1:.4f}")
+ 
+ if __name__ == "__main__":
+-    file_path = "all_loco_results.json"  # 使用main_loco_parse.py生成的文件
+-    main(file_path)
+\ No newline at end of file
++    file_path = os.getenv("MEMORYOS_OUTPUT_FILE", "all_loco_results.json")  # 使用main_loco_parse.py生成的文件
++    main(file_path)
+diff --git a/eval/main_loco_parse.py b/eval/main_loco_parse.py
+index cc3edf5f765d4d608e761699590e320eda4c2c38..7648e9947116a2a30a4018032b6290c5bccb9ca5 100644
+--- a/eval/main_loco_parse.py
++++ b/eval/main_loco_parse.py
+@@ -11,6 +11,7 @@ import openai
+ import time
+ import tiktoken
+ import os
++from pathlib import Path
+ total_tokens = 0
+ num_samples=0
+ # Initialize OpenAI client
+@@ -185,19 +186,47 @@ def process_conversation(conversation_data):
+     return processed
+ 
+ def main():
+-    # 直接处理整个数据集，不需要命令行参数
+-    print("开始处理整个locomo10数据集...")
++    dataset_path = os.getenv("MEMORYOS_DATASET", "locomo10.json")
++    memory_dir = os.getenv("MEMORYOS_MEMORY_DIR", "mem_tmp_loco_final")
++    output_file = os.getenv("MEMORYOS_OUTPUT_FILE", "all_loco_results.json")
++    resume = os.getenv("MEMORYOS_RESUME", "0") == "1"
++    sample_offset = int(os.getenv("MEMORYOS_SAMPLE_OFFSET", "0") or 0)
++    sample_limit = int(os.getenv("MEMORYOS_SAMPLE_LIMIT", "0") or 0)
++    qa_limit = int(os.getenv("MEMORYOS_QA_LIMIT", "0") or 0)
++    dialog_limit = int(os.getenv("MEMORYOS_DIALOG_LIMIT", "0") or 0)
++
++    print("开始处理locomo数据集...")
++    print(f"Dataset: {dataset_path}")
++    print(f"Memory dir: {memory_dir}")
++    print(f"Output file: {output_file}")
++    if sample_limit:
++        print(f"Sample limit: {sample_limit}")
++    if sample_offset:
++        print(f"Sample offset: {sample_offset}")
++    if qa_limit:
++        print(f"QA limit per sample: {qa_limit}")
++    if dialog_limit:
++        print(f"Dialog limit per sample: {dialog_limit}")
++    if resume:
++        print("Resume mode: enabled")
+     
+     # 创建记忆文件存储目录
+-    os.makedirs("mem_tmp_loco_final", exist_ok=True)
++    os.makedirs(memory_dir, exist_ok=True)
++    output_parent = os.path.dirname(output_file)
++    if output_parent:
++        os.makedirs(output_parent, exist_ok=True)
+     
+     # Load locomo10 dataset
+     try:
+-        with open("locomo10.json", "r", encoding="utf-8") as f:
++        with open(dataset_path, "r", encoding="utf-8") as f:
+             dataset = json.load(f)
++        if sample_offset:
++            dataset = dataset[sample_offset:]
++        if sample_limit:
++            dataset = dataset[:sample_limit]
+         print(f"成功加载数据集，共 {len(dataset)} 个样本")
+     except FileNotFoundError:
+-        print("错误：找不到 locomo10.json 文件，请确保文件在当前目录中")
++        print(f"错误：找不到数据文件 {dataset_path}")
+         return
+     except Exception as e:
+         print(f"加载数据集时出错：{e}")
+@@ -206,10 +235,17 @@ def main():
+     # 处理整个数据集，不进行切片
+     # dataset = dataset  # 处理全部数据
+     
+-    # 设置固定的输出文件名
+-    output_file = "all_loco_results.json"
+-    
+     results = []
++    if resume and os.path.exists(output_file):
++        try:
++            with open(output_file, "r", encoding="utf-8") as f:
++                loaded_results = json.load(f)
++            if isinstance(loaded_results, list):
++                results = loaded_results
++                print(f"已加载已有结果 {len(results)} 条，将跳过完整样本")
++        except Exception as e:
++            print(f"加载已有结果失败，将从空结果继续：{e}")
++
+     total_samples = len(dataset)
+     
+     for idx, sample in enumerate(dataset):
+@@ -218,9 +254,31 @@ def main():
+         sample_id = sample.get("sample_id", "unknown_sample")
+         conversation_data = sample["conversation"]
+         qa_pairs = sample["qa"]
++        selected_qa_pairs = qa_pairs[:qa_limit] if qa_limit else qa_pairs
++        expected_qa_count = len(selected_qa_pairs)
++        existing_sample_results = [r for r in results if r.get("sample_id") == sample_id]
++        if resume and len(existing_sample_results) >= expected_qa_count and expected_qa_count > 0:
++            print(
++                f"样本 {sample_id} 已完整完成 "
++                f"({len(existing_sample_results)}/{expected_qa_count})，跳过"
++            )
++            continue
++        if resume and existing_sample_results:
++            print(
++                f"样本 {sample_id} 结果不完整 "
++                f"({len(existing_sample_results)}/{expected_qa_count})，删除该样本结果并重建"
++            )
++            results = [r for r in results if r.get("sample_id") != sample_id]
++        if resume and not existing_sample_results:
++            for suffix in ("short_term", "mid_term", "long_term"):
++                stale_path = Path(memory_dir) / f"{sample_id}_{suffix}.json"
++                if stale_path.exists():
++                    stale_path.unlink()
+         
+         # Process conversation data
+         processed_dialogs = process_conversation(conversation_data)
++        if dialog_limit:
++            processed_dialogs = processed_dialogs[:dialog_limit]
+         
+         if not processed_dialogs:
+             print(f"样本 {sample_id} 没有有效的对话数据，跳过")
+@@ -230,9 +288,9 @@ def main():
+         speaker_b = conversation_data["speaker_b"]
+         
+         # Initialize memory modules
+-        short_mem = ShortTermMemory(max_capacity=1, file_path=f"mem_tmp_loco_final/{sample_id}_short_term.json")
+-        mid_mem = MidTermMemory(max_capacity=2000, file_path=f"mem_tmp_loco_final/{sample_id}_mid_term.json")
+-        long_mem = LongTermMemory(file_path=f"mem_tmp_loco_final/{sample_id}_long_term.json")
++        short_mem = ShortTermMemory(max_capacity=1, file_path=f"{memory_dir}/{sample_id}_short_term.json")
++        mid_mem = MidTermMemory(max_capacity=2000, file_path=f"{memory_dir}/{sample_id}_mid_term.json")
++        long_mem = LongTermMemory(file_path=f"{memory_dir}/{sample_id}_long_term.json")
+         dynamic_updater = DynamicUpdate(short_mem, mid_mem, long_mem, topic_similarity_threshold=0.6, client=client)
+         retrieval_system = RetrievalAndAnswer(short_mem, mid_mem, long_mem, dynamic_updater, queue_capacity=10)
+         
+@@ -244,8 +302,8 @@ def main():
+             update_user_profile_from_top_segment(mid_mem, long_mem, sample_id, client)
+         
+         # Process QA pairs
+-        qa_count = len(qa_pairs)
+-        for qa_idx, qa in enumerate(qa_pairs):
++        qa_count = len(selected_qa_pairs)
++        for qa_idx, qa in enumerate(selected_qa_pairs):
+             print(f"  处理问答 {qa_idx + 1}/{qa_count}")
+             question = qa["question"]
+             original_answer = qa.get("answer", "")
+diff --git a/eval/utils.py b/eval/utils.py
+index 38ed646ed74bcbd002665b5d2446d22359dcadf6..6735242bd9a386fd62b16a8257ba610dd775e29a 100644
+--- a/eval/utils.py
++++ b/eval/utils.py
+@@ -1,23 +1,55 @@
+-import time
+-import uuid
+-import openai
+-import numpy as np
+-from sentence_transformers import SentenceTransformer
+-from openai import OpenAI
+-gpt_client = OpenAI(
+-        api_key='',
+-    base_url='https://cn2us02.opapi.win/v1'
+-)
+-def get_timestamp():
+-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
++import json
++import os
++import re
++import time
++import uuid
++import openai
++import numpy as np
++from sentence_transformers import SentenceTransformer
++from openai import OpenAI
++
++
++DEFAULT_API_KEY = os.getenv("MEMORYOS_API_KEY", "")
++DEFAULT_BASE_URL = os.getenv("MEMORYOS_BASE_URL", "https://cn2us02.opapi.win/v1")
++DEFAULT_LLM_MODEL = os.getenv("MEMORYOS_LLM_MODEL", "gpt-4o-mini")
++DEFAULT_EMBED_MODEL = os.getenv("MEMORYOS_EMBED_MODEL", "all-MiniLM-L6-v2")
++DEFAULT_EMBED_BASE_URL = os.getenv("MEMORYOS_EMBED_BASE_URL", "")
++DEFAULT_EMBED_API_KEY = os.getenv("MEMORYOS_EMBED_API_KEY", "EMPTY")
++DEFAULT_API_RETRIES = int(os.getenv("MEMORYOS_API_RETRIES", "3") or 3)
++
++gpt_client = OpenAI(api_key=DEFAULT_API_KEY, base_url=DEFAULT_BASE_URL)
++_sentence_transformer_cache = {}
++_embedding_api_client = None
++
++
++def get_timestamp():
++    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+ 
+ def generate_id(prefix="id"):
+     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+ 
+-def get_embedding(text, model_name="all-MiniLM-L6-v2"):
+-    model = SentenceTransformer(model_name)
+-    embedding = model.encode([text], convert_to_numpy=True)[0]
+-    return embedding
++def get_embedding(text, model_name=None):
++    model_name = model_name or DEFAULT_EMBED_MODEL
++    if DEFAULT_EMBED_BASE_URL:
++        global _embedding_api_client
++        if _embedding_api_client is None:
++            _embedding_api_client = OpenAI(api_key=DEFAULT_EMBED_API_KEY, base_url=DEFAULT_EMBED_BASE_URL)
++        last_error = None
++        for attempt in range(DEFAULT_API_RETRIES):
++            try:
++                result = _embedding_api_client.embeddings.create(model=model_name, input=[text])
++                return np.array(result.data[0].embedding, dtype=np.float32)
++            except Exception as exc:
++                last_error = exc
++                if attempt + 1 >= DEFAULT_API_RETRIES:
++                    raise
++                time.sleep(2 * (attempt + 1))
++        raise last_error
++
++    if model_name not in _sentence_transformer_cache:
++        _sentence_transformer_cache[model_name] = SentenceTransformer(model_name)
++    model = _sentence_transformer_cache[model_name]
++    return model.encode([text], convert_to_numpy=True)[0]
+ 
+ def normalize_vector(vec):
+     vec = np.array(vec, dtype=np.float32)
+@@ -26,25 +58,49 @@ def normalize_vector(vec):
+         return vec
+     return vec / norm
+ 
+-class OpenAIClient:
+-    def __init__(self, api_key, base_url):
+-        self.api_key = api_key
+-        self.base_url = base_url
+-        openai.api_key = self.api_key
+-        openai.api_base = self.base_url
+-
+-    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
+-        print("调用 GPT 接口，模型:", model)
+-        response = gpt_client.chat.completions.create(
+-            model=model,
+-            messages=messages,
+-            temperature=temperature,
+-            max_tokens=max_tokens
+-        )
+-        return response.choices[0].message.content.strip()
+-
+-def gpt_generate_answer(prompt, messages, client):
+-    return client.chat_completion(model="gpt-4o-mini", messages=messages, temperature=0.7, max_tokens=2000)
++class OpenAIClient:
++    def __init__(self, api_key, base_url):
++        self.api_key = os.getenv("MEMORYOS_API_KEY", api_key)
++        self.base_url = os.getenv("MEMORYOS_BASE_URL", base_url)
++        openai.api_key = self.api_key
++        openai.api_base = self.base_url
++
++    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
++        model = os.getenv("MEMORYOS_LLM_MODEL", model)
++        print("调用 GPT 接口，模型:", model)
++        last_error = None
++        for attempt in range(DEFAULT_API_RETRIES):
++            try:
++                response = gpt_client.chat.completions.create(
++                    model=model,
++                    messages=messages,
++                    temperature=temperature,
++                    max_tokens=max_tokens
++                )
++                return response.choices[0].message.content.strip()
++            except Exception as exc:
++                last_error = exc
++                if attempt + 1 >= DEFAULT_API_RETRIES:
++                    raise
++                time.sleep(2 * (attempt + 1))
++        raise last_error
++
++def gpt_generate_answer(prompt, messages, client):
++    return client.chat_completion(model="gpt-4o-mini", messages=messages, temperature=0.7, max_tokens=2000)
++
++
++def _extract_json_array(text):
++    text = (text or "").strip()
++    if text.startswith("```"):
++        text = re.sub(r"^```(?:json)?\s*", "", text)
++        text = re.sub(r"\s*```$", "", text).strip()
++    try:
++        return json.loads(text)
++    except Exception:
++        match = re.search(r"\[[\s\S]*\]", text)
++        if not match:
++            raise
++        return json.loads(match.group(0))
+ 
+ def analyze_assistant_knowledge(dialogs, client):
+     """
+@@ -135,12 +191,11 @@ def gpt_generate_multi_summary(text, client):
+     ]
+     print("调用 GPT 生成多子主题摘要...")
+     response_text = gpt_generate_answer(prompt, messages, client)
+-    import json
+-    try:
+-        summaries = json.loads(response_text)
+-    except Exception:
+-        summaries = []
+-    return {"input": text, "summaries": summaries}
++    try:
++        summaries = _extract_json_array(response_text)
++    except Exception:
++        summaries = []
++    return {"input": text, "summaries": summaries}
+ 
+ # def gpt_personality_analysis(dialogs, client):
+ #     prompt = ("Please analyze the following conversation and extract the user profile information and user private data."
+diff --git a/memoryos-chromadb/memoryos.py b/memoryos-chromadb/memoryos.py
+index a2df69595c120cb4c649fa6aeeaa508a83227e63..0edfeb9ca08695d149a1a30067be492878ef57a4 100644
+--- a/memoryos-chromadb/memoryos.py
++++ b/memoryos-chromadb/memoryos.py
+@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
+ # 修改为绝对导入
+ try:
+     # 尝试相对导入（当作为包使用时）
+-    from .utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from .utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     from . import prompts
+     from .storage_provider import ChromaStorageProvider
+     from .short_term import ShortTermMemory
+@@ -16,7 +16,7 @@ try:
+     from .retriever import Retriever
+ except ImportError:
+     # 回退到绝对导入（当作为独立模块使用时）
+-    from utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     import prompts
+     from storage_provider import ChromaStorageProvider
+     from short_term import ShortTermMemory
+@@ -43,7 +43,8 @@ class Memoryos:
+                  mid_term_similarity_threshold=0.6,
+                  llm_model="gpt-4o-mini",
+                  embedding_model_name: str = "all-MiniLM-L6-v2",
+-                 embedding_model_kwargs = None
++                 embedding_model_kwargs = None,
++                 performance_log_dir: str = None
+                  ):
+         self.user_id = user_id
+         self.assistant_id = assistant_id
+@@ -67,7 +68,17 @@ class Memoryos:
+         print(f"Using embedding model: {self.embedding_model_name} with kwargs: {self.embedding_model_kwargs}")
+ 
+         # Initialize OpenAI Client
+-        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
++        self.performance_log_dir = performance_log_dir or os.path.join(self.data_storage_path, "performance")
++        self.performance_logger = PerformanceLogger(
++            self.performance_log_dir,
++            static_context={
++                "method": "memoryos",
++                "backend": "chromadb",
++                "user_id": self.user_id,
++                "assistant_id": self.assistant_id,
++            },
++        )
++        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url, logger=self.performance_logger)
+         
+         # Centralized Storage Provider
+         storage_path = os.path.join(self.data_storage_path, "chroma_storage")
+@@ -240,22 +251,27 @@ class Memoryos:
+         """
+         if not timestamp:
+             timestamp = get_timestamp()
+-        
+-        qa_pair = {
+-            "user_id": self.user_id, # Add user_id to qa_pair
+-            "user_input": user_input,
+-            "agent_response": agent_response,
+-            "timestamp": timestamp
+-        }
+-        self.short_term_memory.add_qa_pair(qa_pair)
+-        print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
+-
+-        if self.short_term_memory.is_full():
+-            print("Memoryos: Short-term memory full. Processing to mid-term.")
+-            self.updater.process_short_term_to_mid_term()
+-        
+-        # After any memory addition that might impact mid-term, check for profile updates
+-        self._trigger_profile_and_knowledge_update_if_needed()
++
++        with self.performance_logger.stage(
++            "add",
++            timestamp=timestamp,
++            input_preview=user_input[:200],
++        ):
++            qa_pair = {
++                "user_id": self.user_id, # Add user_id to qa_pair
++                "user_input": user_input,
++                "agent_response": agent_response,
++                "timestamp": timestamp
++            }
++            self.short_term_memory.add_qa_pair(qa_pair)
++            print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
++
++            if self.short_term_memory.is_full():
++                print("Memoryos: Short-term memory full. Processing to mid-term.")
++                self.updater.process_short_term_to_mid_term()
++            
++            # After any memory addition that might impact mid-term, check for profile updates
++            self._trigger_profile_and_knowledge_update_if_needed()
+ 
+     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data = None) -> str:
+         """
+@@ -264,11 +280,12 @@ class Memoryos:
+         print(f"Memoryos: Generating response for query: '{query[:50]}...'")
+ 
+         # 1. Retrieve context
+-        retrieval_results = self.retriever.retrieve_context(
+-            user_query=query,
+-            user_id=self.user_id
+-            # Using default thresholds from Retriever class for now
+-        )
++        with self.performance_logger.stage("search", query=query[:500]):
++            retrieval_results = self.retriever.retrieve_context(
++                user_query=query,
++                user_id=self.user_id
++                # Using default thresholds from Retriever class for now
++            )
+         retrieved_pages = retrieval_results["retrieved_pages"]
+         retrieved_user_knowledge = retrieval_results["retrieved_user_knowledge"]
+         retrieved_assistant_knowledge = retrieval_results["retrieved_assistant_knowledge"]
+@@ -358,12 +375,15 @@ class Memoryos:
+         print("Memoryos: Calling LLM for final response generation...")
+         # print("System Prompt:\n", system_prompt_text)
+         # print("User Prompt:\n", user_prompt_text)
+-        response_content = self.client.chat_completion(
+-            model=self.llm_model, 
+-            messages=messages, 
+-            temperature=0.7, 
+-            max_tokens=1500 # As in original main
+-        )
++        with self.performance_logger.stage("answer", query=query[:500]):
++            response_content = self.client.chat_completion(
++                model=self.llm_model, 
++                messages=messages, 
++                temperature=0.7, 
++                max_tokens=1500, # As in original main
++                call_label="answer_generation",
++                metadata={"query": query[:500]},
++            )
+         
+         # 10. Add this interaction to memory
+         self.add_memory(user_input=query, agent_response=response_content, timestamp=get_timestamp())
+@@ -390,4 +410,4 @@ class Memoryos:
+         self.mid_term_heat_threshold = original_threshold # Restore original threshold
+ 
+     def __repr__(self):
+-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+\ No newline at end of file
++        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+diff --git a/memoryos-chromadb/utils.py b/memoryos-chromadb/utils.py
+index 015bec55853a8378cd82dfedd6f8bd79dc173b43..b3f6fbebaf585a1de4c4eb65ba4a38f2c2d965fa 100644
+--- a/memoryos-chromadb/utils.py
++++ b/memoryos-chromadb/utils.py
+@@ -1,8 +1,11 @@
+ import time
+ import uuid
+ import openai
++import traceback
++from contextlib import contextmanager
++from datetime import datetime, timezone
++from pathlib import Path
+ import numpy as np
+-from sentence_transformers import SentenceTransformer
+ import json
+ import os
+ import inspect
+@@ -18,28 +21,125 @@ import threading
+ def clean_reasoning_model_output(text):
+     """
+     清理推理模型输出中的<think>标签
++    适配推理模型（如o1系列）的输出格式
+     """
+     if not text:
+         return text
+     
+     import re
++    # 移除<think>...</think>标签及其内容
+     cleaned_text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
++    # 清理可能产生的多余空白行
+     cleaned_text = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned_text)
++    # 移除开头和结尾的空白
+     cleaned_text = cleaned_text.strip()
+     
+     return cleaned_text
+ 
++
++class PerformanceLogger:
++    def __init__(self, log_dir, static_context=None):
++        self.log_dir = Path(log_dir)
++        self.log_dir.mkdir(parents=True, exist_ok=True)
++        self.llm_calls_path = self.log_dir / "llm_calls.jsonl"
++        self.stage_timings_path = self.log_dir / "stage_timings.jsonl"
++        self.static_context = static_context or {}
++        self._lock = threading.Lock()
++        self._local = threading.local()
++
++    def _now_iso(self):
++        return datetime.now(timezone.utc).isoformat()
++
++    def _get_stack(self):
++        stack = getattr(self._local, "stage_stack", None)
++        if stack is None:
++            stack = []
++            self._local.stage_stack = stack
++        return stack
++
++    def get_current_stage_context(self):
++        stack = self._get_stack()
++        return dict(stack[-1]) if stack else {}
++
++    def _write_jsonl(self, path, record):
++        with self._lock:
++            with open(path, 'a', encoding='utf-8') as f:
++                f.write(json.dumps(record, ensure_ascii=False) + "\n")
++
++    @contextmanager
++    def stage(self, stage, **metadata):
++        started_at = self._now_iso()
++        start_time = time.time()
++        context = {**self.static_context, **metadata, 'stage': stage}
++        stack = self._get_stack()
++        stack.append(context)
++        status = 'success'
++        error = None
++        try:
++            yield context
++        except Exception as exc:
++            status = 'error'
++            error = f"{type(exc).__name__}: {exc}"
++            raise
++        finally:
++            ended_at = self._now_iso()
++            elapsed_sec = time.time() - start_time
++            stack.pop()
++            record = {
++                **self.static_context,
++                **metadata,
++                'stage': stage,
++                'started_at': started_at,
++                'ended_at': ended_at,
++                'duration_sec': elapsed_sec,
++                'status': status,
++                'error': error,
++            }
++            self._write_jsonl(self.stage_timings_path, record)
++
++    def log_llm_call(self, *, model_name, base_url, messages, response_content, prompt_tokens=None, completion_tokens=None, total_tokens=None, started_at=None, ended_at=None, elapsed_sec=None, error=None, call_label=None, metadata=None):
++        stage_context = self.get_current_stage_context()
++        record = {
++            **self.static_context,
++            **stage_context,
++            **(metadata or {}),
++            'step_label': call_label or stage_context.get('stage') or 'llm_call',
++            'model_name': model_name,
++            'base_url': base_url,
++            'input_messages': messages,
++            'response_content': response_content,
++            'prompt_tokens': prompt_tokens,
++            'completion_tokens': completion_tokens,
++            'total_tokens': total_tokens,
++            'started_at': started_at,
++            'ended_at': ended_at,
++            'elapsed_sec': elapsed_sec,
++            'error': error,
++        }
++        self._write_jsonl(self.llm_calls_path, record)
++
+ # ---- OpenAI Client ----
+ class OpenAIClient:
+-    def __init__(self, api_key, base_url=None, max_workers=5):
++    def __init__(self, api_key, base_url=None, max_workers=5, logger=None):
+         self.api_key = api_key
+         self.base_url = base_url if base_url else "https://api.openai.com/v1"
++        # The openai library looks for OPENAI_API_KEY and OPENAI_BASE_URL env vars by default
++        # or they can be passed directly to the client.
++        # For simplicity and explicit control, we'll pass them to the client constructor.
+         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+         self._lock = threading.Lock()
++        self.logger = logger
+ 
+-    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
++    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         print(f"Calling OpenAI API. Model: {model}")
++        started_at = datetime.now(timezone.utc).isoformat()
++        start_time = time.time()
++        response_content = None
++        prompt_tokens = None
++        completion_tokens = None
++        total_tokens = None
++        error_text = None
+         try:
+             response = self.client.chat.completions.create(
+                 model=model,
+@@ -47,22 +147,74 @@ class OpenAIClient:
+                 temperature=temperature,
+                 max_tokens=max_tokens
+             )
+-            raw_content = response.choices[0].message.content.strip()
++            raw_content = (response.choices[0].message.content or '').strip()
+             cleaned_content = clean_reasoning_model_output(raw_content)
++            usage = getattr(response, 'usage', None)
++            if usage is not None:
++                prompt_tokens = getattr(usage, 'prompt_tokens', None)
++                completion_tokens = getattr(usage, 'completion_tokens', None)
++                total_tokens = getattr(usage, 'total_tokens', None)
++            response_content = cleaned_content
+             return cleaned_content
+         except Exception as e:
++            error_text = f"{type(e).__name__}: {e}"
+             print(f"Error calling OpenAI API: {e}")
+-            return "Error: Could not get response from LLM."
++            response_content = "Error: Could not get response from LLM."
++            return response_content
++        finally:
++            ended_at = datetime.now(timezone.utc).isoformat()
++            elapsed_sec = time.time() - start_time
++            if self.logger is not None:
++                self.logger.log_llm_call(
++                    model_name=model,
++                    base_url=self.base_url,
++                    messages=messages,
++                    response_content=response_content,
++                    prompt_tokens=prompt_tokens,
++                    completion_tokens=completion_tokens,
++                    total_tokens=total_tokens if total_tokens is not None else ((prompt_tokens or 0) + (completion_tokens or 0) if prompt_tokens is not None or completion_tokens is not None else None),
++                    started_at=started_at,
++                    ended_at=ended_at,
++                    elapsed_sec=elapsed_sec,
++                    error=error_text,
++                    call_label=call_label,
++                    metadata=metadata,
++                )
+ 
+-    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
+-        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
++    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
++        """异步版本的chat_completion"""
++        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens, call_label, metadata)
+ 
+     def batch_chat_completion(self, requests):
+-        futures = [self.chat_completion_async(**req) for req in requests]
+-        results = [future.result() for future in as_completed(futures)]
++        """
++        并行处理多个LLM请求
++        requests: List of dict with keys: model, messages, temperature, max_tokens
++        """
++        futures = []
++        for req in requests:
++            future = self.chat_completion_async(
++                model=req.get("model", "gpt-4o-mini"),
++                messages=req["messages"],
++                temperature=req.get("temperature", 0.7),
++                max_tokens=req.get("max_tokens", 2000),
++                call_label=req.get("call_label"),
++                metadata=req.get("metadata")
++            )
++            futures.append(future)
++        
++        results = []
++        for future in as_completed(futures):
++            try:
++                result = future.result()
++                results.append(result)
++            except Exception as e:
++                print(f"Error in batch completion: {e}")
++                results.append("Error: Could not get response from LLM.")
++        
+         return results
+ 
+     def shutdown(self):
++        """关闭线程池"""
+         self.executor.shutdown(wait=True)
+ 
+ # ---- Parallel Processing Utilities ----
+@@ -95,24 +247,57 @@ def ensure_directory_exists(path):
+ 
+ # ---- Embedding Utilities ----
+ _model_cache = {}
+-_embedding_cache = {}
++_embedding_cache = {}  # 添加embedding缓存
+ 
+ def _get_valid_kwargs(func, kwargs):
++    """Helper to filter kwargs for a given function's signature."""
+     try:
+         sig = inspect.signature(func)
+         param_keys = set(sig.parameters.keys())
+         return {k: v for k, v in kwargs.items() if k in param_keys}
+     except (ValueError, TypeError):
++        # Fallback for functions/methods where signature inspection is not straightforward
+         return kwargs
+ 
+ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs):
+-    model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
++    """
++    获取文本的embedding向量。
++    支持多种主流模型，能自动适应不同库的调用方式。
++    - SentenceTransformer模型: e.g., 'all-MiniLM-L6-v2', 'Qwen/Qwen3-Embedding-0.6B'
++    - FlagEmbedding模型: e.g., 'BAAI/bge-m3'
++
++    :param text: 输入文本。
++    :param model_name: Hugging Face上的模型名称。
++    :param use_cache: 是否使用内存缓存。
++    :param kwargs: 传递给模型构造函数或encode方法的额外参数。
++                   - for Qwen: `model_kwargs`, `tokenizer_kwargs`, `prompt_name="query"`
++                   - for BGE-M3: `use_fp16=True`, `max_length=8192`
++    :return: 文本的embedding向量 (numpy array)。
++    """
++    api_base_url = kwargs.pop("api_base_url", None) or kwargs.pop("embedding_api_base_url", None) or kwargs.pop("base_url", None)
++    api_key = kwargs.pop("api_key", None) or kwargs.pop("embedding_api_key", None)
++    model_config_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, **kwargs}, sort_keys=True)
+     
+     if use_cache:
+         cache_key = f"{model_config_key}::{hash(text)}"
+         if cache_key in _embedding_cache:
+             return _embedding_cache[cache_key]
+     
++    if api_base_url:
++        client_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, "api_key": bool(api_key)}, sort_keys=True)
++        if client_key not in _model_cache:
++            resolved_key = api_key or ("local-not-needed" if ("localhost" in api_base_url or "127.0.0.1" in api_base_url) else os.getenv("OPENAI_API_KEY", ""))
++            print(f"Loading embedding API client for {model_name} at {api_base_url}...")
++            _model_cache[client_key] = OpenAI(api_key=resolved_key, base_url=api_base_url)
++        client = _model_cache[client_key]
++        result = client.embeddings.create(model=model_name, input=[text])
++        embedding = np.array(result.data[0].embedding, dtype=np.float32)
++        if use_cache:
++            cache_key = f"{model_config_key}::{hash(text)}"
++            _embedding_cache[cache_key] = embedding
++        return embedding
++
++    # --- Model Loading ---
+     model_init_key = json.dumps({"model_name": model_name, **{k:v for k,v in kwargs.items() if k not in ['batch_size', 'max_length']}}, sort_keys=True)
+     if model_init_key not in _model_cache:
+         print(f"Loading model: {model_name}...")
+@@ -120,35 +305,60 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
+             try:
+                 from FlagEmbedding import BGEM3FlagModel
+                 init_kwargs = _get_valid_kwargs(BGEM3FlagModel.__init__, kwargs)
++                print(f"-> Using BGEM3FlagModel with init kwargs: {init_kwargs}")
+                 _model_cache[model_init_key] = BGEM3FlagModel(model_name, **init_kwargs)
+             except ImportError:
+                 raise ImportError("Please install FlagEmbedding: 'pip install -U FlagEmbedding' to use bge-m3 model.")
+-        else:
+-            from sentence_transformers import SentenceTransformer
+-            init_kwargs = _get_valid_kwargs(SentenceTransformer.__init__, kwargs)
+-            _model_cache[model_init_key] = SentenceTransformer(model_name, **init_kwargs)
++        else: # Default handler for SentenceTransformer-based models (like Qwen, all-MiniLM, etc.)
++            try:
++                from sentence_transformers import SentenceTransformer
++                init_kwargs = _get_valid_kwargs(SentenceTransformer.__init__, kwargs)
++                print(f"-> Using SentenceTransformer with init kwargs: {init_kwargs}")
++                _model_cache[model_init_key] = SentenceTransformer(model_name, **init_kwargs)
++            except ImportError:
++                raise ImportError("Please install sentence-transformers: 'pip install -U sentence-transformers' to use this model.")
+             
+     model = _model_cache[model_init_key]
+     
++    # --- Encoding ---
+     embedding = None
+     if 'bge-m3' in model_name.lower():
+         encode_kwargs = _get_valid_kwargs(model.encode, kwargs)
++        print(f"-> Encoding with BGEM3FlagModel using kwargs: {encode_kwargs}")
+         result = model.encode([text], **encode_kwargs)
+         embedding = result['dense_vecs'][0]
+-    else:
++    else: # Default to SentenceTransformer-based models
+         encode_kwargs = _get_valid_kwargs(model.encode, kwargs)
++        print(f"-> Encoding with SentenceTransformer using kwargs: {encode_kwargs}")
+         embedding = model.encode([text], **encode_kwargs)[0]
+ 
+     if use_cache:
+         cache_key = f"{model_config_key}::{hash(text)}"
+         _embedding_cache[cache_key] = embedding
++        if len(_embedding_cache) > 10000:
++            keys_to_remove = list(_embedding_cache.keys())[:1000]
++            for key in keys_to_remove:
++                try:
++                    del _embedding_cache[key]
++                except KeyError:
++                    pass
++            print("Cleaned embedding cache to prevent memory overflow")
+     
+     return embedding
+ 
++
++def clear_embedding_cache():
++    """清空embedding缓存"""
++    global _embedding_cache
++    _embedding_cache.clear()
++    print("Embedding cache cleared")
++
+ def normalize_vector(vec):
+     vec = np.array(vec, dtype=np.float32)
+     norm = np.linalg.norm(vec)
+-    return vec / norm if norm != 0 else vec
++    if norm == 0:
++        return vec
++    return vec / norm
+ 
+ # ---- Time Decay Function ----
+ def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24):
+@@ -162,6 +372,7 @@ def compute_time_decay(event_timestamp_str, current_timestamp_str, tau_hours=24)
+     except ValueError: # Handle cases where timestamp might be invalid
+         return 0.1 # Default low recency
+ 
++
+ # ---- LLM-based Utility Functions ----
+ 
+ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
+@@ -171,7 +382,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.SUMMARIZE_DIALOGS_USER_PROMPT.format(dialog_text=dialog_text)}
+     ]
+     print("Calling LLM to generate topic summary...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="summarize_dialogs")
+ 
+ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -179,66 +390,44 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.MULTI_SUMMARY_USER_PROMPT.format(text=text)}
+     ]
+     print("Calling LLM to generate multi-topic summary...")
+-    response_text = client.chat_completion(model=model, messages=messages)
++    response_text = client.chat_completion(model=model, messages=messages, call_label="generate_multi_summary")
+     try:
+         summaries = json.loads(response_text)
+     except json.JSONDecodeError:
+         print(f"Warning: Could not parse multi-summary JSON: {response_text}")
+-        summaries = []
++        summaries = [] # Return empty list or a default structure
+     return {"input": text, "summaries": summaries}
+ 
+-def extract_keywords_from_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+-    """
+-    Extract keywords using multi-summary analysis instead of separate keyword extraction.
+-    This is more efficient as the multi-summary already includes keywords for each theme.
+-    """
+-    multi_summary_result = gpt_generate_multi_summary(text, client, model)
+-    all_keywords = []
+-    
+-    if multi_summary_result and multi_summary_result.get("summaries"):
+-        for summary_item in multi_summary_result["summaries"]:
+-            keywords = summary_item.get("keywords", [])
+-            all_keywords.extend(keywords)
+-    
+-    # Remove duplicates while preserving order
+-    seen = set()
+-    unique_keywords = []
+-    for keyword in all_keywords:
+-        if keyword not in seen:
+-            seen.add(keyword)
+-            unique_keywords.append(keyword)
+-    
+-    return unique_keywords
+ 
+-def gpt_user_profile_analysis(conversation_str: str, client: OpenAIClient, model="gpt-4o-mini", existing_user_profile="None"):
++def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini", existing_user_profile="None"):
+     """
+-    Analyze and update user personality profile from a conversation string.
++    Analyze and update user personality profile from dialogs
++    结合现有画像和新对话，直接输出更新后的完整画像
+     """
++    conversation = "\n".join([f"User: {d.get('user_input','')} (Timestamp: {d.get('timestamp', '')})\nAssistant: {d.get('agent_response','')} (Timestamp: {d.get('timestamp', '')})" for d in dialogs])
+     messages = [
+         {"role": "system", "content": prompts.PERSONALITY_ANALYSIS_SYSTEM_PROMPT},
+         {"role": "user", "content": prompts.PERSONALITY_ANALYSIS_USER_PROMPT.format(
+-            conversation=conversation_str,
++            conversation=conversation,
+             existing_user_profile=existing_user_profile
+         )}
+     ]
+     print("Calling LLM for user profile analysis and update...")
+-    result_text = client.chat_completion(model=model, messages=messages)
+-    try:
+-        return json.loads(result_text)
+-    except json.JSONDecodeError:
+-        print(f"Warning: User profile analysis did not return valid JSON. Content: {result_text}")
+-        return {"raw_text_profile": result_text}
++    result_text = client.chat_completion(model=model, messages=messages, call_label="user_profile_analysis")
++    return result_text.strip() if result_text else "None"
+ 
+-def gpt_knowledge_extraction(conversation_str: str, client: OpenAIClient, model="gpt-4o-mini"):
+-    """Extract user private data and assistant knowledge from a conversation string"""
++
++def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
++    """Extract user private data and assistant knowledge from dialogs"""
++    conversation = "\n".join([f"User: {d.get('user_input','')} (Timestamp: {d.get('timestamp', '')})\nAssistant: {d.get('agent_response','')} (Timestamp: {d.get('timestamp', '')})" for d in dialogs])
+     messages = [
+         {"role": "system", "content": prompts.KNOWLEDGE_EXTRACTION_SYSTEM_PROMPT},
+         {"role": "user", "content": prompts.KNOWLEDGE_EXTRACTION_USER_PROMPT.format(
+-            conversation=conversation_str
++            conversation=conversation
+         )}
+     ]
+     print("Calling LLM for knowledge extraction...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="knowledge_extraction")
+     
+     private_data = "None"
+     assistant_knowledge = "None"
+@@ -260,41 +449,86 @@ def gpt_knowledge_extraction(conversation_str: str, client: OpenAIClient, model=
+ 
+     except Exception as e:
+         print(f"Error parsing knowledge extraction: {e}. Raw result: {result_text}")
+-    
++
+     return {
+         "private": private_data if private_data else "None", 
+         "assistant_knowledge": assistant_knowledge if assistant_knowledge else "None"
+     }
+ 
++
++# Keep the old function for backward compatibility, but mark as deprecated
++def gpt_personality_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini", known_user_traits="None"):
++    """
++    DEPRECATED: Use gpt_user_profile_analysis and gpt_knowledge_extraction instead.
++    This function is kept for backward compatibility only.
++    """
++    # Call the new functions
++    profile = gpt_user_profile_analysis(dialogs, client, model, known_user_traits)
++    knowledge_data = gpt_knowledge_extraction(dialogs, client, model)
++    
++    return {
++        "profile": profile,
++        "private": knowledge_data["private"],
++        "assistant_knowledge": knowledge_data["assistant_knowledge"]
++    }
++
++
+ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+         {"role": "system", "content": prompts.UPDATE_PROFILE_SYSTEM_PROMPT},
+         {"role": "user", "content": prompts.UPDATE_PROFILE_USER_PROMPT.format(old_profile=old_profile, new_analysis=new_analysis)}
+     ]
+-    return client.chat_completion(model=model, messages=messages)
++    print("Calling LLM to update user profile...")
++    return client.chat_completion(model=model, messages=messages, call_label="update_profile")
++
++def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
++    messages = [
++        {"role": "system", "content": prompts.EXTRACT_THEME_SYSTEM_PROMPT},
++        {"role": "user", "content": prompts.EXTRACT_THEME_USER_PROMPT.format(answer_text=answer_text)}
++    ]
++    print("Calling LLM to extract theme...")
++    return client.chat_completion(model=model, messages=messages, call_label="extract_theme")
+ 
++
++
++# ---- Functions from dynamic_update.py (to be used by Updater class) ----
+ def check_conversation_continuity(previous_page, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+-    if not previous_page or not current_page:
+-        return False
++    prev_user = previous_page.get("user_input", "") if previous_page else ""
++    prev_agent = previous_page.get("agent_response", "") if previous_page else ""
+     
+-    prompt = prompts.CONTINUITY_CHECK_USER_PROMPT.format(
+-        prev_user=previous_page.get('user_input', ''),
+-        prev_agent=previous_page.get('agent_response', ''),
+-        curr_user=current_page.get('user_input', ''),
+-        curr_agent=current_page.get('agent_response', '')
++    user_prompt = prompts.CONTINUITY_CHECK_USER_PROMPT.format(
++        prev_user=prev_user,
++        prev_agent=prev_agent,
++        curr_user=current_page.get("user_input", ""),
++        curr_agent=current_page.get("agent_response", "")
+     )
+-    messages = [{"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+-    
+-    response = client.chat_completion(model, messages, temperature=0.0)
+-    return response.lower() == 'true'
++    messages = [
++        {"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT},
++        {"role": "user", "content": user_prompt}
++    ]
++    response = client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.0,
++        max_tokens=10,
++        call_label="check_conversation_continuity",
++    )
++    return response.strip().lower() == "true"
+ 
+ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+-    new_dialogue = f"User: {current_page.get('user_input', '')}\nAssistant: {current_page.get('agent_response', '')}"
+-    
+-    prompt = prompts.META_INFO_USER_PROMPT.format(
+-        last_meta=last_page_meta or "This is the beginning of the conversation.",
+-        new_dialogue=new_dialogue
++    current_conversation = f"User: {current_page.get('user_input', '')}\nAssistant: {current_page.get('agent_response', '')}"
++    user_prompt = prompts.META_INFO_USER_PROMPT.format(
++        last_meta=last_page_meta if last_page_meta else "None",
++        new_dialogue=current_conversation
+     )
+-    messages = [{"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+-    
+-    return client.chat_completion(model, messages, temperature=0.3) 
+\ No newline at end of file
++    messages = [
++        {"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT},
++        {"role": "user", "content": user_prompt}
++    ]
++    return client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.3,
++        max_tokens=100,
++        call_label="generate_page_meta_info",
++    ).strip() 
+diff --git a/memoryos-mcp/memoryos/memoryos.py b/memoryos-mcp/memoryos/memoryos.py
+index ae7da094eb0c3d42667adc9dac4961de43f170fe..9d9b314e1c83d39f7e57155cd5d825f887a999bf 100644
+--- a/memoryos-mcp/memoryos/memoryos.py
++++ b/memoryos-mcp/memoryos/memoryos.py
+@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
+ # 修改为绝对导入
+ try:
+     # 尝试相对导入（当作为包使用时）
+-    from .utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from .utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     from . import prompts
+     from .short_term import ShortTermMemory
+     from .mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -14,7 +14,7 @@ try:
+     from .retriever import Retriever
+ except ImportError:
+     # 回退到绝对导入（当作为独立模块使用时）
+-    from utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     import prompts
+     from short_term import ShortTermMemory
+     from mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -40,7 +40,8 @@ class Memoryos:
+                  mid_term_similarity_threshold=0.6,
+                  llm_model="gpt-4o-mini",
+                  embedding_model_name: str = "all-MiniLM-L6-v2",
+-                 embedding_model_kwargs: dict = None
++                 embedding_model_kwargs: dict = None,
++                 performance_log_dir: str = None
+                  ):
+         self.user_id = user_id
+         self.assistant_id = assistant_id
+@@ -65,7 +66,17 @@ class Memoryos:
+         print(f"Using embedding model: {self.embedding_model_name} with kwargs: {self.embedding_model_kwargs}")
+ 
+         # Initialize OpenAI Client
+-        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
++        self.performance_log_dir = performance_log_dir or os.path.join(self.data_storage_path, "performance")
++        self.performance_logger = PerformanceLogger(
++            self.performance_log_dir,
++            static_context={
++                "method": "memoryos",
++                "backend": "pypi",
++                "user_id": self.user_id,
++                "assistant_id": self.assistant_id,
++            },
++        )
++        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url, logger=self.performance_logger)
+ 
+         # Define file paths for user-specific data
+         self.user_data_dir = os.path.join(self.data_storage_path, "users", self.user_id)
+@@ -226,22 +237,32 @@ class Memoryos:
+         """
+         if not timestamp:
+             timestamp = get_timestamp()
+-        
+-        qa_pair = {
+-            "user_input": user_input,
+-            "agent_response": agent_response,
+-            "timestamp": timestamp
+-            # meta_data can be added here if it needs to be stored with the QA pair
+-        }
+-        self.short_term_memory.add_qa_pair(qa_pair)
+-        print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
+ 
+-        if self.short_term_memory.is_full():
+-            print("Memoryos: Short-term memory full. Processing to mid-term.")
+-            self.updater.process_short_term_to_mid_term()
+-        
+-        # After any memory addition that might impact mid-term, check for profile updates
+-        self._trigger_profile_and_knowledge_update_if_needed()
++        with self.performance_logger.stage(
++            "add",
++            timestamp=timestamp,
++            input_preview=user_input[:200],
++        ):
++            qa_pair = {
++                "user_input": user_input,
++                "agent_response": agent_response,
++                "timestamp": timestamp,
++                "meta_data": meta_data or {},
++                # meta_data can be added here if it needs to be stored with the QA pair
++            }
++            if isinstance(meta_data, dict):
++                for key in ("source_session_id", "source_turn_ids", "source_turn_indices", "source_turn_range"):
++                    if key in meta_data:
++                        qa_pair[key] = meta_data[key]
++            self.short_term_memory.add_qa_pair(qa_pair)
++            print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
++
++            if self.short_term_memory.is_full():
++                print("Memoryos: Short-term memory full. Processing to mid-term.")
++                self.updater.process_short_term_to_mid_term()
++            
++            # After any memory addition that might impact mid-term, check for profile updates
++            self._trigger_profile_and_knowledge_update_if_needed()
+ 
+     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
+         """
+@@ -250,11 +271,12 @@ class Memoryos:
+         print(f"Memoryos: Generating response for query: '{query[:50]}...'")
+ 
+         # 1. Retrieve context
+-        retrieval_results = self.retriever.retrieve_context(
+-            user_query=query,
+-            user_id=self.user_id
+-            # Using default thresholds from Retriever class for now
+-        )
++        with self.performance_logger.stage("search", query=query[:500]):
++            retrieval_results = self.retriever.retrieve_context(
++                user_query=query,
++                user_id=self.user_id
++                # Using default thresholds from Retriever class for now
++            )
+         retrieved_pages = retrieval_results["retrieved_pages"]
+         retrieved_user_knowledge = retrieval_results["retrieved_user_knowledge"]
+         retrieved_assistant_knowledge = retrieval_results["retrieved_assistant_knowledge"]
+@@ -329,12 +351,15 @@ class Memoryos:
+         print("Memoryos: Calling LLM for final response generation...")
+         # print("System Prompt:\n", system_prompt_text)
+         # print("User Prompt:\n", user_prompt_text)
+-        response_content = self.client.chat_completion(
+-            model=self.llm_model, 
+-            messages=messages, 
+-            temperature=0.7, 
+-            max_tokens=1500 # As in original main
+-        )
++        with self.performance_logger.stage("answer", query=query[:500]):
++            response_content = self.client.chat_completion(
++                model=self.llm_model, 
++                messages=messages, 
++                temperature=0.7, 
++                max_tokens=1500, # As in original main
++                call_label="answer_generation",
++                metadata={"query": query[:500]},
++            )
+         
+         # 10. Add this interaction to memory
+         self.add_memory(user_input=query, agent_response=response_content, timestamp=get_timestamp())
+@@ -358,5 +383,33 @@ class Memoryos:
+         self._trigger_profile_and_knowledge_update_if_needed()
+         self.mid_term_heat_threshold = original_threshold # Restore original threshold
+ 
++    def get_memory_stats(self) -> dict:
++        """
++        Retrieve the current storage statistics of the memory system.
++        Provides read-only monitoring capabilities with minimal intrusion, allowing 
++        developers or clients to check the load status of different memory layers.
++        """
++        stats = {
++            "user_id": self.user_id,
++            "short_term_count": len(self.short_term_memory.get_all()),
++            "mid_term_sessions_count": len(self.mid_term_memory.sessions),
++        }
++        
++        # Safely attempt to retrieve long-term memory status to prevent execution failures
++        try:
++            # Verify the existence and validity of the user profile
++            profile = self.user_long_term_memory.get_raw_user_profile(self.user_id)
++            stats["has_user_profile"] = bool(profile and profile.lower() != "none" and "No detailed profile" not in profile)
++            
++            # Calculate the total number of assistant knowledge entries
++            assistant_knowledge = self.get_assistant_knowledge_summary()
++            stats["assistant_knowledge_count"] = len(assistant_knowledge) if isinstance(assistant_knowledge, list) else 0
++            
++        except Exception as e:
++            # Catch any unexpected schema or attribute errors gracefully
++            stats["long_term_stats_error"] = str(e)
++            
++        return stats
++
+     def __repr__(self):
+-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+\ No newline at end of file
++        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+diff --git a/memoryos-mcp/memoryos/updater.py b/memoryos-mcp/memoryos/updater.py
+index 33de39b849d97b403443e9105ad0c86b03da6c61..a741f13ce0f514e0c6291fd6fe55b15e5ac6398f 100644
+--- a/memoryos-mcp/memoryos/updater.py
++++ b/memoryos-mcp/memoryos/updater.py
+@@ -120,6 +120,11 @@ class Updater:
+                 "user_input": qa_pair.get("user_input", ""),
+                 "agent_response": qa_pair.get("agent_response", ""),
+                 "timestamp": qa_pair.get("timestamp", get_timestamp()),
++                "meta_data": qa_pair.get("meta_data", {}),
++                "source_session_id": qa_pair.get("source_session_id"),
++                "source_turn_ids": qa_pair.get("source_turn_ids"),
++                "source_turn_indices": qa_pair.get("source_turn_indices"),
++                "source_turn_range": qa_pair.get("source_turn_range"),
+                 "preloaded": False, # Default for new pages from short-term
+                 "analyzed": False,  # Default for new pages from short-term
+                 "pre_page": None,
+@@ -190,7 +195,7 @@ class Updater:
+             fallback_keywords = []  # Use empty keywords since multi-summary failed
+             self.mid_term_memory.insert_pages_into_session(
+                 summary_for_new_pages=fallback_summary,
+-                keywords_for_new_pages=fallback_keywords,
++                keywords_for_new_pages=list(fallback_keywords),
+                 pages_to_insert=current_batch_pages,
+                 similarity_threshold=self.topic_similarity_threshold
+             )
+@@ -236,4 +241,4 @@ class Updater:
+                 if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
+                     self.long_term_memory.add_assistant_knowledge(line.strip())
+ 
+-        # LongTermMemory.save() is called by its add/update methods 
+\ No newline at end of file
++        # LongTermMemory.save() is called by its add/update methods 
+diff --git a/memoryos-mcp/memoryos/utils.py b/memoryos-mcp/memoryos/utils.py
+index 6983a447f238f82bf5d164ab25764575871da064..b3f6fbebaf585a1de4c4eb65ba4a38f2c2d965fa 100644
+--- a/memoryos-mcp/memoryos/utils.py
++++ b/memoryos-mcp/memoryos/utils.py
+@@ -1,8 +1,11 @@
+ import time
+ import uuid
+ import openai
++import traceback
++from contextlib import contextmanager
++from datetime import datetime, timezone
++from pathlib import Path
+ import numpy as np
+-from sentence_transformers import SentenceTransformer
+ import json
+ import os
+ import inspect
+@@ -33,9 +36,91 @@ def clean_reasoning_model_output(text):
+     
+     return cleaned_text
+ 
++
++class PerformanceLogger:
++    def __init__(self, log_dir, static_context=None):
++        self.log_dir = Path(log_dir)
++        self.log_dir.mkdir(parents=True, exist_ok=True)
++        self.llm_calls_path = self.log_dir / "llm_calls.jsonl"
++        self.stage_timings_path = self.log_dir / "stage_timings.jsonl"
++        self.static_context = static_context or {}
++        self._lock = threading.Lock()
++        self._local = threading.local()
++
++    def _now_iso(self):
++        return datetime.now(timezone.utc).isoformat()
++
++    def _get_stack(self):
++        stack = getattr(self._local, "stage_stack", None)
++        if stack is None:
++            stack = []
++            self._local.stage_stack = stack
++        return stack
++
++    def get_current_stage_context(self):
++        stack = self._get_stack()
++        return dict(stack[-1]) if stack else {}
++
++    def _write_jsonl(self, path, record):
++        with self._lock:
++            with open(path, 'a', encoding='utf-8') as f:
++                f.write(json.dumps(record, ensure_ascii=False) + "\n")
++
++    @contextmanager
++    def stage(self, stage, **metadata):
++        started_at = self._now_iso()
++        start_time = time.time()
++        context = {**self.static_context, **metadata, 'stage': stage}
++        stack = self._get_stack()
++        stack.append(context)
++        status = 'success'
++        error = None
++        try:
++            yield context
++        except Exception as exc:
++            status = 'error'
++            error = f"{type(exc).__name__}: {exc}"
++            raise
++        finally:
++            ended_at = self._now_iso()
++            elapsed_sec = time.time() - start_time
++            stack.pop()
++            record = {
++                **self.static_context,
++                **metadata,
++                'stage': stage,
++                'started_at': started_at,
++                'ended_at': ended_at,
++                'duration_sec': elapsed_sec,
++                'status': status,
++                'error': error,
++            }
++            self._write_jsonl(self.stage_timings_path, record)
++
++    def log_llm_call(self, *, model_name, base_url, messages, response_content, prompt_tokens=None, completion_tokens=None, total_tokens=None, started_at=None, ended_at=None, elapsed_sec=None, error=None, call_label=None, metadata=None):
++        stage_context = self.get_current_stage_context()
++        record = {
++            **self.static_context,
++            **stage_context,
++            **(metadata or {}),
++            'step_label': call_label or stage_context.get('stage') or 'llm_call',
++            'model_name': model_name,
++            'base_url': base_url,
++            'input_messages': messages,
++            'response_content': response_content,
++            'prompt_tokens': prompt_tokens,
++            'completion_tokens': completion_tokens,
++            'total_tokens': total_tokens,
++            'started_at': started_at,
++            'ended_at': ended_at,
++            'elapsed_sec': elapsed_sec,
++            'error': error,
++        }
++        self._write_jsonl(self.llm_calls_path, record)
++
+ # ---- OpenAI Client ----
+ class OpenAIClient:
+-    def __init__(self, api_key, base_url=None, max_workers=5):
++    def __init__(self, api_key, base_url=None, max_workers=5, logger=None):
+         self.api_key = api_key
+         self.base_url = base_url if base_url else "https://api.openai.com/v1"
+         # The openai library looks for OPENAI_API_KEY and OPENAI_BASE_URL env vars by default
+@@ -44,9 +129,17 @@ class OpenAIClient:
+         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+         self._lock = threading.Lock()
++        self.logger = logger
+ 
+-    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
++    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         print(f"Calling OpenAI API. Model: {model}")
++        started_at = datetime.now(timezone.utc).isoformat()
++        start_time = time.time()
++        response_content = None
++        prompt_tokens = None
++        completion_tokens = None
++        total_tokens = None
++        error_text = None
+         try:
+             response = self.client.chat.completions.create(
+                 model=model,
+@@ -54,18 +147,43 @@ class OpenAIClient:
+                 temperature=temperature,
+                 max_tokens=max_tokens
+             )
+-            raw_content = response.choices[0].message.content.strip()
+-            # 自动清理推理模型的<think>标签
++            raw_content = (response.choices[0].message.content or '').strip()
+             cleaned_content = clean_reasoning_model_output(raw_content)
++            usage = getattr(response, 'usage', None)
++            if usage is not None:
++                prompt_tokens = getattr(usage, 'prompt_tokens', None)
++                completion_tokens = getattr(usage, 'completion_tokens', None)
++                total_tokens = getattr(usage, 'total_tokens', None)
++            response_content = cleaned_content
+             return cleaned_content
+         except Exception as e:
++            error_text = f"{type(e).__name__}: {e}"
+             print(f"Error calling OpenAI API: {e}")
+-            # Fallback or error handling
+-            return "Error: Could not get response from LLM."
+-
+-    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
++            response_content = "Error: Could not get response from LLM."
++            return response_content
++        finally:
++            ended_at = datetime.now(timezone.utc).isoformat()
++            elapsed_sec = time.time() - start_time
++            if self.logger is not None:
++                self.logger.log_llm_call(
++                    model_name=model,
++                    base_url=self.base_url,
++                    messages=messages,
++                    response_content=response_content,
++                    prompt_tokens=prompt_tokens,
++                    completion_tokens=completion_tokens,
++                    total_tokens=total_tokens if total_tokens is not None else ((prompt_tokens or 0) + (completion_tokens or 0) if prompt_tokens is not None or completion_tokens is not None else None),
++                    started_at=started_at,
++                    ended_at=ended_at,
++                    elapsed_sec=elapsed_sec,
++                    error=error_text,
++                    call_label=call_label,
++                    metadata=metadata,
++                )
++
++    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         """异步版本的chat_completion"""
+-        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
++        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens, call_label, metadata)
+ 
+     def batch_chat_completion(self, requests):
+         """
+@@ -78,7 +196,9 @@ class OpenAIClient:
+                 model=req.get("model", "gpt-4o-mini"),
+                 messages=req["messages"],
+                 temperature=req.get("temperature", 0.7),
+-                max_tokens=req.get("max_tokens", 2000)
++                max_tokens=req.get("max_tokens", 2000),
++                call_label=req.get("call_label"),
++                metadata=req.get("metadata")
+             )
+             futures.append(future)
+         
+@@ -154,13 +274,29 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
+                    - for BGE-M3: `use_fp16=True`, `max_length=8192`
+     :return: 文本的embedding向量 (numpy array)。
+     """
+-    model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
++    api_base_url = kwargs.pop("api_base_url", None) or kwargs.pop("embedding_api_base_url", None) or kwargs.pop("base_url", None)
++    api_key = kwargs.pop("api_key", None) or kwargs.pop("embedding_api_key", None)
++    model_config_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, **kwargs}, sort_keys=True)
+     
+     if use_cache:
+         cache_key = f"{model_config_key}::{hash(text)}"
+         if cache_key in _embedding_cache:
+             return _embedding_cache[cache_key]
+     
++    if api_base_url:
++        client_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, "api_key": bool(api_key)}, sort_keys=True)
++        if client_key not in _model_cache:
++            resolved_key = api_key or ("local-not-needed" if ("localhost" in api_base_url or "127.0.0.1" in api_base_url) else os.getenv("OPENAI_API_KEY", ""))
++            print(f"Loading embedding API client for {model_name} at {api_base_url}...")
++            _model_cache[client_key] = OpenAI(api_key=resolved_key, base_url=api_base_url)
++        client = _model_cache[client_key]
++        result = client.embeddings.create(model=model_name, input=[text])
++        embedding = np.array(result.data[0].embedding, dtype=np.float32)
++        if use_cache:
++            cache_key = f"{model_config_key}::{hash(text)}"
++            _embedding_cache[cache_key] = embedding
++        return embedding
++
+     # --- Model Loading ---
+     model_init_key = json.dumps({"model_name": model_name, **{k:v for k,v in kwargs.items() if k not in ['batch_size', 'max_length']}}, sort_keys=True)
+     if model_init_key not in _model_cache:
+@@ -246,7 +382,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.SUMMARIZE_DIALOGS_USER_PROMPT.format(dialog_text=dialog_text)}
+     ]
+     print("Calling LLM to generate topic summary...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="summarize_dialogs")
+ 
+ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -254,7 +390,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.MULTI_SUMMARY_USER_PROMPT.format(text=text)}
+     ]
+     print("Calling LLM to generate multi-topic summary...")
+-    response_text = client.chat_completion(model=model, messages=messages)
++    response_text = client.chat_completion(model=model, messages=messages, call_label="generate_multi_summary")
+     try:
+         summaries = json.loads(response_text)
+     except json.JSONDecodeError:
+@@ -277,7 +413,7 @@ def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini"
+         )}
+     ]
+     print("Calling LLM for user profile analysis and update...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="user_profile_analysis")
+     return result_text.strip() if result_text else "None"
+ 
+ 
+@@ -291,7 +427,7 @@ def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini")
+         )}
+     ]
+     print("Calling LLM for knowledge extraction...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="knowledge_extraction")
+     
+     private_data = "None"
+     assistant_knowledge = "None"
+@@ -343,7 +479,7 @@ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="g
+         {"role": "user", "content": prompts.UPDATE_PROFILE_USER_PROMPT.format(old_profile=old_profile, new_analysis=new_analysis)}
+     ]
+     print("Calling LLM to update user profile...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="update_profile")
+ 
+ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -351,16 +487,9 @@ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.EXTRACT_THEME_USER_PROMPT.format(answer_text=answer_text)}
+     ]
+     print("Calling LLM to extract theme...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="extract_theme")
++
+ 
+-def llm_extract_keywords(text, client: OpenAIClient, model="gpt-4o-mini"):
+-    messages = [
+-        {"role": "system", "content": prompts.EXTRACT_KEYWORDS_SYSTEM_PROMPT},
+-        {"role": "user", "content": prompts.EXTRACT_KEYWORDS_USER_PROMPT.format(text=text)}
+-    ]
+-    print("Calling LLM to extract keywords...")
+-    response = client.chat_completion(model=model, messages=messages)
+-    return [kw.strip() for kw in response.split(',') if kw.strip()]
+ 
+ # ---- Functions from dynamic_update.py (to be used by Updater class) ----
+ def check_conversation_continuity(previous_page, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+@@ -377,7 +506,13 @@ def check_conversation_continuity(previous_page, current_page, client: OpenAICli
+         {"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    response = client.chat_completion(model=model, messages=messages, temperature=0.0, max_tokens=10)
++    response = client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.0,
++        max_tokens=10,
++        call_label="check_conversation_continuity",
++    )
+     return response.strip().lower() == "true"
+ 
+ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+@@ -390,4 +525,10 @@ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient,
+         {"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    return client.chat_completion(model=model, messages=messages, temperature=0.3, max_tokens=100).strip() 
+\ No newline at end of file
++    return client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.3,
++        max_tokens=100,
++        call_label="generate_page_meta_info",
++    ).strip() 
+diff --git a/memoryos-playground/memoryos.py b/memoryos-playground/memoryos.py
+index ae7da094eb0c3d42667adc9dac4961de43f170fe..9d9b314e1c83d39f7e57155cd5d825f887a999bf 100644
+--- a/memoryos-playground/memoryos.py
++++ b/memoryos-playground/memoryos.py
+@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
+ # 修改为绝对导入
+ try:
+     # 尝试相对导入（当作为包使用时）
+-    from .utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from .utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     from . import prompts
+     from .short_term import ShortTermMemory
+     from .mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -14,7 +14,7 @@ try:
+     from .retriever import Retriever
+ except ImportError:
+     # 回退到绝对导入（当作为独立模块使用时）
+-    from utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     import prompts
+     from short_term import ShortTermMemory
+     from mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -40,7 +40,8 @@ class Memoryos:
+                  mid_term_similarity_threshold=0.6,
+                  llm_model="gpt-4o-mini",
+                  embedding_model_name: str = "all-MiniLM-L6-v2",
+-                 embedding_model_kwargs: dict = None
++                 embedding_model_kwargs: dict = None,
++                 performance_log_dir: str = None
+                  ):
+         self.user_id = user_id
+         self.assistant_id = assistant_id
+@@ -65,7 +66,17 @@ class Memoryos:
+         print(f"Using embedding model: {self.embedding_model_name} with kwargs: {self.embedding_model_kwargs}")
+ 
+         # Initialize OpenAI Client
+-        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
++        self.performance_log_dir = performance_log_dir or os.path.join(self.data_storage_path, "performance")
++        self.performance_logger = PerformanceLogger(
++            self.performance_log_dir,
++            static_context={
++                "method": "memoryos",
++                "backend": "pypi",
++                "user_id": self.user_id,
++                "assistant_id": self.assistant_id,
++            },
++        )
++        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url, logger=self.performance_logger)
+ 
+         # Define file paths for user-specific data
+         self.user_data_dir = os.path.join(self.data_storage_path, "users", self.user_id)
+@@ -226,22 +237,32 @@ class Memoryos:
+         """
+         if not timestamp:
+             timestamp = get_timestamp()
+-        
+-        qa_pair = {
+-            "user_input": user_input,
+-            "agent_response": agent_response,
+-            "timestamp": timestamp
+-            # meta_data can be added here if it needs to be stored with the QA pair
+-        }
+-        self.short_term_memory.add_qa_pair(qa_pair)
+-        print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
+ 
+-        if self.short_term_memory.is_full():
+-            print("Memoryos: Short-term memory full. Processing to mid-term.")
+-            self.updater.process_short_term_to_mid_term()
+-        
+-        # After any memory addition that might impact mid-term, check for profile updates
+-        self._trigger_profile_and_knowledge_update_if_needed()
++        with self.performance_logger.stage(
++            "add",
++            timestamp=timestamp,
++            input_preview=user_input[:200],
++        ):
++            qa_pair = {
++                "user_input": user_input,
++                "agent_response": agent_response,
++                "timestamp": timestamp,
++                "meta_data": meta_data or {},
++                # meta_data can be added here if it needs to be stored with the QA pair
++            }
++            if isinstance(meta_data, dict):
++                for key in ("source_session_id", "source_turn_ids", "source_turn_indices", "source_turn_range"):
++                    if key in meta_data:
++                        qa_pair[key] = meta_data[key]
++            self.short_term_memory.add_qa_pair(qa_pair)
++            print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
++
++            if self.short_term_memory.is_full():
++                print("Memoryos: Short-term memory full. Processing to mid-term.")
++                self.updater.process_short_term_to_mid_term()
++            
++            # After any memory addition that might impact mid-term, check for profile updates
++            self._trigger_profile_and_knowledge_update_if_needed()
+ 
+     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
+         """
+@@ -250,11 +271,12 @@ class Memoryos:
+         print(f"Memoryos: Generating response for query: '{query[:50]}...'")
+ 
+         # 1. Retrieve context
+-        retrieval_results = self.retriever.retrieve_context(
+-            user_query=query,
+-            user_id=self.user_id
+-            # Using default thresholds from Retriever class for now
+-        )
++        with self.performance_logger.stage("search", query=query[:500]):
++            retrieval_results = self.retriever.retrieve_context(
++                user_query=query,
++                user_id=self.user_id
++                # Using default thresholds from Retriever class for now
++            )
+         retrieved_pages = retrieval_results["retrieved_pages"]
+         retrieved_user_knowledge = retrieval_results["retrieved_user_knowledge"]
+         retrieved_assistant_knowledge = retrieval_results["retrieved_assistant_knowledge"]
+@@ -329,12 +351,15 @@ class Memoryos:
+         print("Memoryos: Calling LLM for final response generation...")
+         # print("System Prompt:\n", system_prompt_text)
+         # print("User Prompt:\n", user_prompt_text)
+-        response_content = self.client.chat_completion(
+-            model=self.llm_model, 
+-            messages=messages, 
+-            temperature=0.7, 
+-            max_tokens=1500 # As in original main
+-        )
++        with self.performance_logger.stage("answer", query=query[:500]):
++            response_content = self.client.chat_completion(
++                model=self.llm_model, 
++                messages=messages, 
++                temperature=0.7, 
++                max_tokens=1500, # As in original main
++                call_label="answer_generation",
++                metadata={"query": query[:500]},
++            )
+         
+         # 10. Add this interaction to memory
+         self.add_memory(user_input=query, agent_response=response_content, timestamp=get_timestamp())
+@@ -358,5 +383,33 @@ class Memoryos:
+         self._trigger_profile_and_knowledge_update_if_needed()
+         self.mid_term_heat_threshold = original_threshold # Restore original threshold
+ 
++    def get_memory_stats(self) -> dict:
++        """
++        Retrieve the current storage statistics of the memory system.
++        Provides read-only monitoring capabilities with minimal intrusion, allowing 
++        developers or clients to check the load status of different memory layers.
++        """
++        stats = {
++            "user_id": self.user_id,
++            "short_term_count": len(self.short_term_memory.get_all()),
++            "mid_term_sessions_count": len(self.mid_term_memory.sessions),
++        }
++        
++        # Safely attempt to retrieve long-term memory status to prevent execution failures
++        try:
++            # Verify the existence and validity of the user profile
++            profile = self.user_long_term_memory.get_raw_user_profile(self.user_id)
++            stats["has_user_profile"] = bool(profile and profile.lower() != "none" and "No detailed profile" not in profile)
++            
++            # Calculate the total number of assistant knowledge entries
++            assistant_knowledge = self.get_assistant_knowledge_summary()
++            stats["assistant_knowledge_count"] = len(assistant_knowledge) if isinstance(assistant_knowledge, list) else 0
++            
++        except Exception as e:
++            # Catch any unexpected schema or attribute errors gracefully
++            stats["long_term_stats_error"] = str(e)
++            
++        return stats
++
+     def __repr__(self):
+-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+\ No newline at end of file
++        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+diff --git a/memoryos-playground/updater.py b/memoryos-playground/updater.py
+index 831fe8a9635c4e0da2f2cf5ac7fde9ee78443922..a741f13ce0f514e0c6291fd6fe55b15e5ac6398f 100644
+--- a/memoryos-playground/updater.py
++++ b/memoryos-playground/updater.py
+@@ -120,6 +120,11 @@ class Updater:
+                 "user_input": qa_pair.get("user_input", ""),
+                 "agent_response": qa_pair.get("agent_response", ""),
+                 "timestamp": qa_pair.get("timestamp", get_timestamp()),
++                "meta_data": qa_pair.get("meta_data", {}),
++                "source_session_id": qa_pair.get("source_session_id"),
++                "source_turn_ids": qa_pair.get("source_turn_ids"),
++                "source_turn_indices": qa_pair.get("source_turn_indices"),
++                "source_turn_range": qa_pair.get("source_turn_range"),
+                 "preloaded": False, # Default for new pages from short-term
+                 "analyzed": False,  # Default for new pages from short-term
+                 "pre_page": None,
+@@ -236,4 +241,4 @@ class Updater:
+                 if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
+                     self.long_term_memory.add_assistant_knowledge(line.strip())
+ 
+-        # LongTermMemory.save() is called by its add/update methods 
+\ No newline at end of file
++        # LongTermMemory.save() is called by its add/update methods 
+diff --git a/memoryos-playground/utils.py b/memoryos-playground/utils.py
+index 40d95ffdfb3f606cb164cfcf5fd1cd0a33182c72..b3f6fbebaf585a1de4c4eb65ba4a38f2c2d965fa 100644
+--- a/memoryos-playground/utils.py
++++ b/memoryos-playground/utils.py
+@@ -1,8 +1,11 @@
+ import time
+ import uuid
+ import openai
++import traceback
++from contextlib import contextmanager
++from datetime import datetime, timezone
++from pathlib import Path
+ import numpy as np
+-from sentence_transformers import SentenceTransformer
+ import json
+ import os
+ import inspect
+@@ -33,9 +36,91 @@ def clean_reasoning_model_output(text):
+     
+     return cleaned_text
+ 
++
++class PerformanceLogger:
++    def __init__(self, log_dir, static_context=None):
++        self.log_dir = Path(log_dir)
++        self.log_dir.mkdir(parents=True, exist_ok=True)
++        self.llm_calls_path = self.log_dir / "llm_calls.jsonl"
++        self.stage_timings_path = self.log_dir / "stage_timings.jsonl"
++        self.static_context = static_context or {}
++        self._lock = threading.Lock()
++        self._local = threading.local()
++
++    def _now_iso(self):
++        return datetime.now(timezone.utc).isoformat()
++
++    def _get_stack(self):
++        stack = getattr(self._local, "stage_stack", None)
++        if stack is None:
++            stack = []
++            self._local.stage_stack = stack
++        return stack
++
++    def get_current_stage_context(self):
++        stack = self._get_stack()
++        return dict(stack[-1]) if stack else {}
++
++    def _write_jsonl(self, path, record):
++        with self._lock:
++            with open(path, 'a', encoding='utf-8') as f:
++                f.write(json.dumps(record, ensure_ascii=False) + "\n")
++
++    @contextmanager
++    def stage(self, stage, **metadata):
++        started_at = self._now_iso()
++        start_time = time.time()
++        context = {**self.static_context, **metadata, 'stage': stage}
++        stack = self._get_stack()
++        stack.append(context)
++        status = 'success'
++        error = None
++        try:
++            yield context
++        except Exception as exc:
++            status = 'error'
++            error = f"{type(exc).__name__}: {exc}"
++            raise
++        finally:
++            ended_at = self._now_iso()
++            elapsed_sec = time.time() - start_time
++            stack.pop()
++            record = {
++                **self.static_context,
++                **metadata,
++                'stage': stage,
++                'started_at': started_at,
++                'ended_at': ended_at,
++                'duration_sec': elapsed_sec,
++                'status': status,
++                'error': error,
++            }
++            self._write_jsonl(self.stage_timings_path, record)
++
++    def log_llm_call(self, *, model_name, base_url, messages, response_content, prompt_tokens=None, completion_tokens=None, total_tokens=None, started_at=None, ended_at=None, elapsed_sec=None, error=None, call_label=None, metadata=None):
++        stage_context = self.get_current_stage_context()
++        record = {
++            **self.static_context,
++            **stage_context,
++            **(metadata or {}),
++            'step_label': call_label or stage_context.get('stage') or 'llm_call',
++            'model_name': model_name,
++            'base_url': base_url,
++            'input_messages': messages,
++            'response_content': response_content,
++            'prompt_tokens': prompt_tokens,
++            'completion_tokens': completion_tokens,
++            'total_tokens': total_tokens,
++            'started_at': started_at,
++            'ended_at': ended_at,
++            'elapsed_sec': elapsed_sec,
++            'error': error,
++        }
++        self._write_jsonl(self.llm_calls_path, record)
++
+ # ---- OpenAI Client ----
+ class OpenAIClient:
+-    def __init__(self, api_key, base_url=None, max_workers=5):
++    def __init__(self, api_key, base_url=None, max_workers=5, logger=None):
+         self.api_key = api_key
+         self.base_url = base_url if base_url else "https://api.openai.com/v1"
+         # The openai library looks for OPENAI_API_KEY and OPENAI_BASE_URL env vars by default
+@@ -44,9 +129,17 @@ class OpenAIClient:
+         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+         self._lock = threading.Lock()
++        self.logger = logger
+ 
+-    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
++    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         print(f"Calling OpenAI API. Model: {model}")
++        started_at = datetime.now(timezone.utc).isoformat()
++        start_time = time.time()
++        response_content = None
++        prompt_tokens = None
++        completion_tokens = None
++        total_tokens = None
++        error_text = None
+         try:
+             response = self.client.chat.completions.create(
+                 model=model,
+@@ -54,18 +147,43 @@ class OpenAIClient:
+                 temperature=temperature,
+                 max_tokens=max_tokens
+             )
+-            raw_content = response.choices[0].message.content.strip()
+-            # 自动清理推理模型的<think>标签
++            raw_content = (response.choices[0].message.content or '').strip()
+             cleaned_content = clean_reasoning_model_output(raw_content)
++            usage = getattr(response, 'usage', None)
++            if usage is not None:
++                prompt_tokens = getattr(usage, 'prompt_tokens', None)
++                completion_tokens = getattr(usage, 'completion_tokens', None)
++                total_tokens = getattr(usage, 'total_tokens', None)
++            response_content = cleaned_content
+             return cleaned_content
+         except Exception as e:
++            error_text = f"{type(e).__name__}: {e}"
+             print(f"Error calling OpenAI API: {e}")
+-            # Fallback or error handling
+-            return "Error: Could not get response from LLM."
+-
+-    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
++            response_content = "Error: Could not get response from LLM."
++            return response_content
++        finally:
++            ended_at = datetime.now(timezone.utc).isoformat()
++            elapsed_sec = time.time() - start_time
++            if self.logger is not None:
++                self.logger.log_llm_call(
++                    model_name=model,
++                    base_url=self.base_url,
++                    messages=messages,
++                    response_content=response_content,
++                    prompt_tokens=prompt_tokens,
++                    completion_tokens=completion_tokens,
++                    total_tokens=total_tokens if total_tokens is not None else ((prompt_tokens or 0) + (completion_tokens or 0) if prompt_tokens is not None or completion_tokens is not None else None),
++                    started_at=started_at,
++                    ended_at=ended_at,
++                    elapsed_sec=elapsed_sec,
++                    error=error_text,
++                    call_label=call_label,
++                    metadata=metadata,
++                )
++
++    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         """异步版本的chat_completion"""
+-        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
++        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens, call_label, metadata)
+ 
+     def batch_chat_completion(self, requests):
+         """
+@@ -78,7 +196,9 @@ class OpenAIClient:
+                 model=req.get("model", "gpt-4o-mini"),
+                 messages=req["messages"],
+                 temperature=req.get("temperature", 0.7),
+-                max_tokens=req.get("max_tokens", 2000)
++                max_tokens=req.get("max_tokens", 2000),
++                call_label=req.get("call_label"),
++                metadata=req.get("metadata")
+             )
+             futures.append(future)
+         
+@@ -154,13 +274,29 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
+                    - for BGE-M3: `use_fp16=True`, `max_length=8192`
+     :return: 文本的embedding向量 (numpy array)。
+     """
+-    model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
++    api_base_url = kwargs.pop("api_base_url", None) or kwargs.pop("embedding_api_base_url", None) or kwargs.pop("base_url", None)
++    api_key = kwargs.pop("api_key", None) or kwargs.pop("embedding_api_key", None)
++    model_config_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, **kwargs}, sort_keys=True)
+     
+     if use_cache:
+         cache_key = f"{model_config_key}::{hash(text)}"
+         if cache_key in _embedding_cache:
+             return _embedding_cache[cache_key]
+     
++    if api_base_url:
++        client_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, "api_key": bool(api_key)}, sort_keys=True)
++        if client_key not in _model_cache:
++            resolved_key = api_key or ("local-not-needed" if ("localhost" in api_base_url or "127.0.0.1" in api_base_url) else os.getenv("OPENAI_API_KEY", ""))
++            print(f"Loading embedding API client for {model_name} at {api_base_url}...")
++            _model_cache[client_key] = OpenAI(api_key=resolved_key, base_url=api_base_url)
++        client = _model_cache[client_key]
++        result = client.embeddings.create(model=model_name, input=[text])
++        embedding = np.array(result.data[0].embedding, dtype=np.float32)
++        if use_cache:
++            cache_key = f"{model_config_key}::{hash(text)}"
++            _embedding_cache[cache_key] = embedding
++        return embedding
++
+     # --- Model Loading ---
+     model_init_key = json.dumps({"model_name": model_name, **{k:v for k,v in kwargs.items() if k not in ['batch_size', 'max_length']}}, sort_keys=True)
+     if model_init_key not in _model_cache:
+@@ -246,7 +382,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.SUMMARIZE_DIALOGS_USER_PROMPT.format(dialog_text=dialog_text)}
+     ]
+     print("Calling LLM to generate topic summary...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="summarize_dialogs")
+ 
+ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -254,7 +390,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.MULTI_SUMMARY_USER_PROMPT.format(text=text)}
+     ]
+     print("Calling LLM to generate multi-topic summary...")
+-    response_text = client.chat_completion(model=model, messages=messages)
++    response_text = client.chat_completion(model=model, messages=messages, call_label="generate_multi_summary")
+     try:
+         summaries = json.loads(response_text)
+     except json.JSONDecodeError:
+@@ -277,7 +413,7 @@ def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini"
+         )}
+     ]
+     print("Calling LLM for user profile analysis and update...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="user_profile_analysis")
+     return result_text.strip() if result_text else "None"
+ 
+ 
+@@ -291,7 +427,7 @@ def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini")
+         )}
+     ]
+     print("Calling LLM for knowledge extraction...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="knowledge_extraction")
+     
+     private_data = "None"
+     assistant_knowledge = "None"
+@@ -343,7 +479,7 @@ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="g
+         {"role": "user", "content": prompts.UPDATE_PROFILE_USER_PROMPT.format(old_profile=old_profile, new_analysis=new_analysis)}
+     ]
+     print("Calling LLM to update user profile...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="update_profile")
+ 
+ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -351,7 +487,7 @@ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.EXTRACT_THEME_USER_PROMPT.format(answer_text=answer_text)}
+     ]
+     print("Calling LLM to extract theme...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="extract_theme")
+ 
+ 
+ 
+@@ -370,7 +506,13 @@ def check_conversation_continuity(previous_page, current_page, client: OpenAICli
+         {"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    response = client.chat_completion(model=model, messages=messages, temperature=0.0, max_tokens=10)
++    response = client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.0,
++        max_tokens=10,
++        call_label="check_conversation_continuity",
++    )
+     return response.strip().lower() == "true"
+ 
+ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+@@ -383,4 +525,10 @@ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient,
+         {"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    return client.chat_completion(model=model, messages=messages, temperature=0.3, max_tokens=100).strip() 
+\ No newline at end of file
++    return client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.3,
++        max_tokens=100,
++        call_label="generate_page_meta_info",
++    ).strip() 
+diff --git a/memoryos-pypi/memoryos.py b/memoryos-pypi/memoryos.py
+index a07e064898de6927898f48fc3e7d1b5e8e3d5de4..1b67cbb7cfe5a916b16ef882cf86046d9a05c43a 100644
+--- a/memoryos-pypi/memoryos.py
++++ b/memoryos-pypi/memoryos.py
+@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
+ # 修改为绝对导入
+ try:
+     # 尝试相对导入（当作为包使用时）
+-    from .utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from .utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     from . import prompts
+     from .short_term import ShortTermMemory
+     from .mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -14,7 +14,7 @@ try:
+     from .retriever import Retriever
+ except ImportError:
+     # 回退到绝对导入（当作为独立模块使用时）
+-    from utils import OpenAIClient, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
++    from utils import OpenAIClient, PerformanceLogger, get_timestamp, generate_id, gpt_user_profile_analysis, gpt_knowledge_extraction, ensure_directory_exists
+     import prompts
+     from short_term import ShortTermMemory
+     from mid_term import MidTermMemory, compute_segment_heat # For H_THRESHOLD logic
+@@ -35,12 +35,13 @@ class Memoryos:
+                  short_term_capacity=10,
+                  mid_term_capacity=2000,
+                  long_term_knowledge_capacity=100,
+-                 retrieval_queue_capacity=7,
++                 retrieval_queue_capacity=10,
+                  mid_term_heat_threshold=H_PROFILE_UPDATE_THRESHOLD,
+                  mid_term_similarity_threshold=0.6,
+                  llm_model="gpt-4o-mini",
+                  embedding_model_name: str = "all-MiniLM-L6-v2",
+-                 embedding_model_kwargs: dict = None
++                 embedding_model_kwargs: dict = None,
++                 performance_log_dir: str = None
+                  ):
+         self.user_id = user_id
+         self.assistant_id = assistant_id
+@@ -65,7 +66,17 @@ class Memoryos:
+         print(f"Using embedding model: {self.embedding_model_name} with kwargs: {self.embedding_model_kwargs}")
+ 
+         # Initialize OpenAI Client
+-        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url)
++        self.performance_log_dir = performance_log_dir or os.path.join(self.data_storage_path, "performance")
++        self.performance_logger = PerformanceLogger(
++            self.performance_log_dir,
++            static_context={
++                "method": "memoryos",
++                "backend": "pypi",
++                "user_id": self.user_id,
++                "assistant_id": self.assistant_id,
++            },
++        )
++        self.client = OpenAIClient(api_key=openai_api_key, base_url=openai_base_url, logger=self.performance_logger)
+ 
+         # Define file paths for user-specific data
+         self.user_data_dir = os.path.join(self.data_storage_path, "users", self.user_id)
+@@ -226,22 +237,71 @@ class Memoryos:
+         """
+         if not timestamp:
+             timestamp = get_timestamp()
+-        
+-        qa_pair = {
+-            "user_input": user_input,
+-            "agent_response": agent_response,
+-            "timestamp": timestamp
+-            # meta_data can be added here if it needs to be stored with the QA pair
+-        }
+-        self.short_term_memory.add_qa_pair(qa_pair)
+-        print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
+ 
+-        if self.short_term_memory.is_full():
+-            print("Memoryos: Short-term memory full. Processing to mid-term.")
+-            self.updater.process_short_term_to_mid_term()
+-        
+-        # After any memory addition that might impact mid-term, check for profile updates
+-        self._trigger_profile_and_knowledge_update_if_needed()
++        with self.performance_logger.stage(
++            "add",
++            timestamp=timestamp,
++            input_preview=user_input[:200],
++        ):
++            qa_pair = {
++                "user_input": user_input,
++                "agent_response": agent_response,
++                "timestamp": timestamp,
++                "meta_data": meta_data or {},
++                # meta_data can be added here if it needs to be stored with the QA pair
++            }
++            if isinstance(meta_data, dict):
++                for key in ("source_session_id", "source_turn_ids", "source_turn_indices", "source_turn_range"):
++                    if key in meta_data:
++                        qa_pair[key] = meta_data[key]
++            self.short_term_memory.add_qa_pair(qa_pair)
++            print(f"Memoryos: Added QA to short-term. User: {user_input[:30]}...")
++
++            if self.short_term_memory.is_full():
++                print("Memoryos: Short-term memory full. Processing to mid-term.")
++                self.updater.process_short_term_to_mid_term()
++            
++            # After any memory addition that might impact mid-term, check for profile updates
++            self._trigger_profile_and_knowledge_update_if_needed()
++
++    def add_memories(self, memories: list[dict], preserve_recent_short_term: bool = True):
++        """
++        Bulk-ingests a list of QA pairs. This is benchmark-oriented and avoids
++        triggering mid-term updates after every single QA pair.
++        """
++        if not memories:
++            return
++
++        qa_pairs = []
++        for memory in memories:
++            timestamp = memory.get("timestamp") or get_timestamp()
++            meta_data = memory.get("meta_data") or {}
++            qa_pair = {
++                "user_input": memory.get("user_input", ""),
++                "agent_response": memory.get("agent_response", ""),
++                "timestamp": timestamp,
++                "meta_data": meta_data,
++            }
++            if isinstance(meta_data, dict):
++                for key in ("source_session_id", "source_turn_ids", "source_turn_indices", "source_turn_range"):
++                    if key in meta_data:
++                        qa_pair[key] = meta_data[key]
++            qa_pairs.append(qa_pair)
++
++        keep_count = max(self.short_term_memory.max_capacity - 1, 0) if preserve_recent_short_term else 0
++        retained_pairs = qa_pairs[-keep_count:] if keep_count else []
++        evicted_pairs = qa_pairs[:-keep_count] if keep_count else qa_pairs
++
++        with self.performance_logger.stage(
++            "add",
++            bulk=True,
++            batch_size=len(qa_pairs),
++            retained_short_term=len(retained_pairs),
++            input_preview=(qa_pairs[0].get("user_input", "")[:200] if qa_pairs else ""),
++        ):
++            self.updater.process_qa_batch_to_mid_term(evicted_pairs)
++            self.short_term_memory.replace_all(retained_pairs)
++            self._trigger_profile_and_knowledge_update_if_needed()
+ 
+     def get_response(self, query: str, relationship_with_user="friend", style_hint="", user_conversation_meta_data: dict = None) -> str:
+         """
+@@ -250,11 +310,12 @@ class Memoryos:
+         print(f"Memoryos: Generating response for query: '{query[:50]}...'")
+ 
+         # 1. Retrieve context
+-        retrieval_results = self.retriever.retrieve_context(
+-            user_query=query,
+-            user_id=self.user_id
+-            # Using default thresholds from Retriever class for now
+-        )
++        with self.performance_logger.stage("search", query=query[:500]):
++            retrieval_results = self.retriever.retrieve_context(
++                user_query=query,
++                user_id=self.user_id
++                # Using default thresholds from Retriever class for now
++            )
+         retrieved_pages = retrieval_results["retrieved_pages"]
+         retrieved_user_knowledge = retrieval_results["retrieved_user_knowledge"]
+         retrieved_assistant_knowledge = retrieval_results["retrieved_assistant_knowledge"]
+@@ -329,12 +390,15 @@ class Memoryos:
+         print("Memoryos: Calling LLM for final response generation...")
+         # print("System Prompt:\n", system_prompt_text)
+         # print("User Prompt:\n", user_prompt_text)
+-        response_content = self.client.chat_completion(
+-            model=self.llm_model, 
+-            messages=messages, 
+-            temperature=0.7, 
+-            max_tokens=1500 # As in original main
+-        )
++        with self.performance_logger.stage("answer", query=query[:500]):
++            response_content = self.client.chat_completion(
++                model=self.llm_model, 
++                messages=messages, 
++                temperature=0.7, 
++                max_tokens=1500, # As in original main
++                call_label="answer_generation",
++                metadata={"query": query[:500]},
++            )
+         
+         # 10. Add this interaction to memory
+         self.add_memory(user_input=query, agent_response=response_content, timestamp=get_timestamp())
+@@ -387,4 +451,4 @@ class Memoryos:
+         return stats
+ 
+     def __repr__(self):
+-        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+\ No newline at end of file
++        return f"<Memoryos user_id='{self.user_id}' assistant_id='{self.assistant_id}' data_path='{self.data_storage_path}'>" 
+diff --git a/memoryos-pypi/retriever.py b/memoryos-pypi/retriever.py
+index 1ea15681d02fe6b178b6651a322aae6cae9bab61..714386db62f6e56067852e21ea6bce3a6cd905ee 100644
+--- a/memoryos-pypi/retriever.py
++++ b/memoryos-pypi/retriever.py
+@@ -21,7 +21,7 @@ class Retriever:
+                  long_term_memory: LongTermMemory, 
+                  assistant_long_term_memory: Optional[LongTermMemory] = None, # Add assistant LTM
+                  # client: OpenAIClient, # Not strictly needed if all LLM calls are within memory modules
+-                 queue_capacity=7): # Default from main_memoybank was 7 for retrieval_queue
++                 queue_capacity=10): # Align retrieval budget with @10 evaluation
+         # Short term memory is usually for direct context, not primary retrieval source here
+         # self.short_term_memory = short_term_memory 
+         self.mid_term_memory = mid_term_memory
+@@ -94,7 +94,7 @@ class Retriever:
+                          segment_similarity_threshold=0.1,  # From main_memoybank example
+                          page_similarity_threshold=0.1,     # From main_memoybank example
+                          knowledge_threshold=0.01,          # From main_memoybank example
+-                         top_k_sessions=5,                  # From MidTermMemory search default
++                         top_k_sessions=10,                 # Align retrieval budget with @10 evaluation
+                          top_k_knowledge=20                  # Default for knowledge search
+                          ):
+         print(f"Retriever: Starting PARALLEL retrieval for query: '{user_query[:50]}...'")
+@@ -128,4 +128,4 @@ class Retriever:
+             "retrieved_user_knowledge": retrieved_user_knowledge or [], # List of knowledge entry dicts
+             "retrieved_assistant_knowledge": retrieved_assistant_knowledge or [], # List of assistant knowledge entry dicts
+             "retrieved_at": get_timestamp()
+-        } 
+\ No newline at end of file
++        } 
+diff --git a/memoryos-pypi/short_term.py b/memoryos-pypi/short_term.py
+index 56ec65b22a14c1a7741aafc4394cb2a82887ca4b..2c757b313b600a9019688074cc832925527830a2 100644
+--- a/memoryos-pypi/short_term.py
++++ b/memoryos-pypi/short_term.py
+@@ -12,7 +12,7 @@ class ShortTermMemory:
+         self.file_path = file_path
+         ensure_directory_exists(self.file_path)
+         self.memory = deque(maxlen=max_capacity)
+-        self.lock = threading.Lock()
++        self.lock = threading.RLock()
+         self.load()
+ 
+     def add_qa_pair(self, qa_pair):
+@@ -27,6 +27,11 @@ class ShortTermMemory:
+     def get_all(self):
+         return list(self.memory)
+ 
++    def replace_all(self, qa_pairs):
++        with self.lock:
++            self.memory = deque(list(qa_pairs), maxlen=self.max_capacity)
++            self.save()
++
+     def is_full(self):
+         return len(self.memory) >= self.max_capacity # Use >= to be safe
+ 
+@@ -64,4 +69,4 @@ class ShortTermMemory:
+             print(f"ShortTermMemory: Error decoding JSON from {self.file_path}. Initializing new memory.")
+         except Exception as e:
+             self.memory = deque(maxlen=self.max_capacity)
+-            print(f"ShortTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.") 
+\ No newline at end of file
++            print(f"ShortTermMemory: An unexpected error occurred during load from {self.file_path}: {e}. Initializing new memory.") 
+diff --git a/memoryos-pypi/updater.py b/memoryos-pypi/updater.py
+index 831fe8a9635c4e0da2f2cf5ac7fde9ee78443922..5ecf808ef837518e15b48868ca4a11a12a2aa955 100644
+--- a/memoryos-pypi/updater.py
++++ b/memoryos-pypi/updater.py
+@@ -97,19 +97,13 @@ class Updater:
+         if q: # If any pages were updated
+             self.mid_term_memory.save() # Save mid-term memory after updates
+ 
+-    def process_short_term_to_mid_term(self):
+-        evicted_qas = []
+-        while self.short_term_memory.is_full():
+-            qa = self.short_term_memory.pop_oldest()
+-            if qa and qa.get("user_input") and qa.get("agent_response"):
+-                evicted_qas.append(qa)
+-        
++    def _process_evicted_qas(self, evicted_qas):
+         if not evicted_qas:
+             print("Updater: No QAs evicted from short-term memory.")
+             return
+ 
+         print(f"Updater: Processing {len(evicted_qas)} QAs from short-term to mid-term.")
+-        
++
+         # 1. Create page structures and handle continuity within the evicted batch
+         current_batch_pages = []
+         temp_last_page_in_batch = self.last_evicted_page_for_continuity # Carry over from previous batch if any
+@@ -120,6 +114,11 @@ class Updater:
+                 "user_input": qa_pair.get("user_input", ""),
+                 "agent_response": qa_pair.get("agent_response", ""),
+                 "timestamp": qa_pair.get("timestamp", get_timestamp()),
++                "meta_data": qa_pair.get("meta_data", {}),
++                "source_session_id": qa_pair.get("source_session_id"),
++                "source_turn_ids": qa_pair.get("source_turn_ids"),
++                "source_turn_indices": qa_pair.get("source_turn_indices"),
++                "source_turn_range": qa_pair.get("source_turn_range"),
+                 "preloaded": False, # Default for new pages from short-term
+                 "analyzed": False,  # Default for new pages from short-term
+                 "pre_page": None,
+@@ -206,6 +205,21 @@ class Updater:
+         if current_batch_pages: # Save if any pages were processed
+             self.mid_term_memory.save()
+ 
++    def process_short_term_to_mid_term(self):
++        evicted_qas = []
++        while self.short_term_memory.is_full():
++            qa = self.short_term_memory.pop_oldest()
++            if qa and qa.get("user_input") and qa.get("agent_response"):
++                evicted_qas.append(qa)
++        self._process_evicted_qas(evicted_qas)
++
++    def process_qa_batch_to_mid_term(self, qa_pairs):
++        evicted_qas = [
++            qa for qa in qa_pairs
++            if qa and qa.get("user_input") and qa.get("agent_response")
++        ]
++        self._process_evicted_qas(evicted_qas)
++
+     def update_long_term_from_analysis(self, user_id, profile_analysis_result):
+         """
+         Updates long-term memory based on the results of a personality/knowledge analysis.
+@@ -236,4 +250,4 @@ class Updater:
+                 if line.strip() and line.strip().lower() not in ["none", "- none", "- none."]:
+                     self.long_term_memory.add_assistant_knowledge(line.strip())
+ 
+-        # LongTermMemory.save() is called by its add/update methods 
+\ No newline at end of file
++        # LongTermMemory.save() is called by its add/update methods 
+diff --git a/memoryos-pypi/utils.py b/memoryos-pypi/utils.py
+index 40d95ffdfb3f606cb164cfcf5fd1cd0a33182c72..b3f6fbebaf585a1de4c4eb65ba4a38f2c2d965fa 100644
+--- a/memoryos-pypi/utils.py
++++ b/memoryos-pypi/utils.py
+@@ -1,8 +1,11 @@
+ import time
+ import uuid
+ import openai
++import traceback
++from contextlib import contextmanager
++from datetime import datetime, timezone
++from pathlib import Path
+ import numpy as np
+-from sentence_transformers import SentenceTransformer
+ import json
+ import os
+ import inspect
+@@ -33,9 +36,91 @@ def clean_reasoning_model_output(text):
+     
+     return cleaned_text
+ 
++
++class PerformanceLogger:
++    def __init__(self, log_dir, static_context=None):
++        self.log_dir = Path(log_dir)
++        self.log_dir.mkdir(parents=True, exist_ok=True)
++        self.llm_calls_path = self.log_dir / "llm_calls.jsonl"
++        self.stage_timings_path = self.log_dir / "stage_timings.jsonl"
++        self.static_context = static_context or {}
++        self._lock = threading.Lock()
++        self._local = threading.local()
++
++    def _now_iso(self):
++        return datetime.now(timezone.utc).isoformat()
++
++    def _get_stack(self):
++        stack = getattr(self._local, "stage_stack", None)
++        if stack is None:
++            stack = []
++            self._local.stage_stack = stack
++        return stack
++
++    def get_current_stage_context(self):
++        stack = self._get_stack()
++        return dict(stack[-1]) if stack else {}
++
++    def _write_jsonl(self, path, record):
++        with self._lock:
++            with open(path, 'a', encoding='utf-8') as f:
++                f.write(json.dumps(record, ensure_ascii=False) + "\n")
++
++    @contextmanager
++    def stage(self, stage, **metadata):
++        started_at = self._now_iso()
++        start_time = time.time()
++        context = {**self.static_context, **metadata, 'stage': stage}
++        stack = self._get_stack()
++        stack.append(context)
++        status = 'success'
++        error = None
++        try:
++            yield context
++        except Exception as exc:
++            status = 'error'
++            error = f"{type(exc).__name__}: {exc}"
++            raise
++        finally:
++            ended_at = self._now_iso()
++            elapsed_sec = time.time() - start_time
++            stack.pop()
++            record = {
++                **self.static_context,
++                **metadata,
++                'stage': stage,
++                'started_at': started_at,
++                'ended_at': ended_at,
++                'duration_sec': elapsed_sec,
++                'status': status,
++                'error': error,
++            }
++            self._write_jsonl(self.stage_timings_path, record)
++
++    def log_llm_call(self, *, model_name, base_url, messages, response_content, prompt_tokens=None, completion_tokens=None, total_tokens=None, started_at=None, ended_at=None, elapsed_sec=None, error=None, call_label=None, metadata=None):
++        stage_context = self.get_current_stage_context()
++        record = {
++            **self.static_context,
++            **stage_context,
++            **(metadata or {}),
++            'step_label': call_label or stage_context.get('stage') or 'llm_call',
++            'model_name': model_name,
++            'base_url': base_url,
++            'input_messages': messages,
++            'response_content': response_content,
++            'prompt_tokens': prompt_tokens,
++            'completion_tokens': completion_tokens,
++            'total_tokens': total_tokens,
++            'started_at': started_at,
++            'ended_at': ended_at,
++            'elapsed_sec': elapsed_sec,
++            'error': error,
++        }
++        self._write_jsonl(self.llm_calls_path, record)
++
+ # ---- OpenAI Client ----
+ class OpenAIClient:
+-    def __init__(self, api_key, base_url=None, max_workers=5):
++    def __init__(self, api_key, base_url=None, max_workers=5, logger=None):
+         self.api_key = api_key
+         self.base_url = base_url if base_url else "https://api.openai.com/v1"
+         # The openai library looks for OPENAI_API_KEY and OPENAI_BASE_URL env vars by default
+@@ -44,9 +129,17 @@ class OpenAIClient:
+         self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+         self._lock = threading.Lock()
++        self.logger = logger
+ 
+-    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000):
++    def chat_completion(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         print(f"Calling OpenAI API. Model: {model}")
++        started_at = datetime.now(timezone.utc).isoformat()
++        start_time = time.time()
++        response_content = None
++        prompt_tokens = None
++        completion_tokens = None
++        total_tokens = None
++        error_text = None
+         try:
+             response = self.client.chat.completions.create(
+                 model=model,
+@@ -54,18 +147,43 @@ class OpenAIClient:
+                 temperature=temperature,
+                 max_tokens=max_tokens
+             )
+-            raw_content = response.choices[0].message.content.strip()
+-            # 自动清理推理模型的<think>标签
++            raw_content = (response.choices[0].message.content or '').strip()
+             cleaned_content = clean_reasoning_model_output(raw_content)
++            usage = getattr(response, 'usage', None)
++            if usage is not None:
++                prompt_tokens = getattr(usage, 'prompt_tokens', None)
++                completion_tokens = getattr(usage, 'completion_tokens', None)
++                total_tokens = getattr(usage, 'total_tokens', None)
++            response_content = cleaned_content
+             return cleaned_content
+         except Exception as e:
++            error_text = f"{type(e).__name__}: {e}"
+             print(f"Error calling OpenAI API: {e}")
+-            # Fallback or error handling
+-            return "Error: Could not get response from LLM."
+-
+-    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000):
++            response_content = "Error: Could not get response from LLM."
++            return response_content
++        finally:
++            ended_at = datetime.now(timezone.utc).isoformat()
++            elapsed_sec = time.time() - start_time
++            if self.logger is not None:
++                self.logger.log_llm_call(
++                    model_name=model,
++                    base_url=self.base_url,
++                    messages=messages,
++                    response_content=response_content,
++                    prompt_tokens=prompt_tokens,
++                    completion_tokens=completion_tokens,
++                    total_tokens=total_tokens if total_tokens is not None else ((prompt_tokens or 0) + (completion_tokens or 0) if prompt_tokens is not None or completion_tokens is not None else None),
++                    started_at=started_at,
++                    ended_at=ended_at,
++                    elapsed_sec=elapsed_sec,
++                    error=error_text,
++                    call_label=call_label,
++                    metadata=metadata,
++                )
++
++    def chat_completion_async(self, model, messages, temperature=0.7, max_tokens=2000, call_label=None, metadata=None):
+         """异步版本的chat_completion"""
+-        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens)
++        return self.executor.submit(self.chat_completion, model, messages, temperature, max_tokens, call_label, metadata)
+ 
+     def batch_chat_completion(self, requests):
+         """
+@@ -78,7 +196,9 @@ class OpenAIClient:
+                 model=req.get("model", "gpt-4o-mini"),
+                 messages=req["messages"],
+                 temperature=req.get("temperature", 0.7),
+-                max_tokens=req.get("max_tokens", 2000)
++                max_tokens=req.get("max_tokens", 2000),
++                call_label=req.get("call_label"),
++                metadata=req.get("metadata")
+             )
+             futures.append(future)
+         
+@@ -154,13 +274,29 @@ def get_embedding(text, model_name="all-MiniLM-L6-v2", use_cache=True, **kwargs)
+                    - for BGE-M3: `use_fp16=True`, `max_length=8192`
+     :return: 文本的embedding向量 (numpy array)。
+     """
+-    model_config_key = json.dumps({"model_name": model_name, **kwargs}, sort_keys=True)
++    api_base_url = kwargs.pop("api_base_url", None) or kwargs.pop("embedding_api_base_url", None) or kwargs.pop("base_url", None)
++    api_key = kwargs.pop("api_key", None) or kwargs.pop("embedding_api_key", None)
++    model_config_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, **kwargs}, sort_keys=True)
+     
+     if use_cache:
+         cache_key = f"{model_config_key}::{hash(text)}"
+         if cache_key in _embedding_cache:
+             return _embedding_cache[cache_key]
+     
++    if api_base_url:
++        client_key = json.dumps({"model_name": model_name, "api_base_url": api_base_url, "api_key": bool(api_key)}, sort_keys=True)
++        if client_key not in _model_cache:
++            resolved_key = api_key or ("local-not-needed" if ("localhost" in api_base_url or "127.0.0.1" in api_base_url) else os.getenv("OPENAI_API_KEY", ""))
++            print(f"Loading embedding API client for {model_name} at {api_base_url}...")
++            _model_cache[client_key] = OpenAI(api_key=resolved_key, base_url=api_base_url)
++        client = _model_cache[client_key]
++        result = client.embeddings.create(model=model_name, input=[text])
++        embedding = np.array(result.data[0].embedding, dtype=np.float32)
++        if use_cache:
++            cache_key = f"{model_config_key}::{hash(text)}"
++            _embedding_cache[cache_key] = embedding
++        return embedding
++
+     # --- Model Loading ---
+     model_init_key = json.dumps({"model_name": model_name, **{k:v for k,v in kwargs.items() if k not in ['batch_size', 'max_length']}}, sort_keys=True)
+     if model_init_key not in _model_cache:
+@@ -246,7 +382,7 @@ def gpt_summarize_dialogs(dialogs, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.SUMMARIZE_DIALOGS_USER_PROMPT.format(dialog_text=dialog_text)}
+     ]
+     print("Calling LLM to generate topic summary...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="summarize_dialogs")
+ 
+ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -254,7 +390,7 @@ def gpt_generate_multi_summary(text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.MULTI_SUMMARY_USER_PROMPT.format(text=text)}
+     ]
+     print("Calling LLM to generate multi-topic summary...")
+-    response_text = client.chat_completion(model=model, messages=messages)
++    response_text = client.chat_completion(model=model, messages=messages, call_label="generate_multi_summary")
+     try:
+         summaries = json.loads(response_text)
+     except json.JSONDecodeError:
+@@ -277,7 +413,7 @@ def gpt_user_profile_analysis(dialogs, client: OpenAIClient, model="gpt-4o-mini"
+         )}
+     ]
+     print("Calling LLM for user profile analysis and update...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="user_profile_analysis")
+     return result_text.strip() if result_text else "None"
+ 
+ 
+@@ -291,7 +427,7 @@ def gpt_knowledge_extraction(dialogs, client: OpenAIClient, model="gpt-4o-mini")
+         )}
+     ]
+     print("Calling LLM for knowledge extraction...")
+-    result_text = client.chat_completion(model=model, messages=messages)
++    result_text = client.chat_completion(model=model, messages=messages, call_label="knowledge_extraction")
+     
+     private_data = "None"
+     assistant_knowledge = "None"
+@@ -343,7 +479,7 @@ def gpt_update_profile(old_profile, new_analysis, client: OpenAIClient, model="g
+         {"role": "user", "content": prompts.UPDATE_PROFILE_USER_PROMPT.format(old_profile=old_profile, new_analysis=new_analysis)}
+     ]
+     print("Calling LLM to update user profile...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="update_profile")
+ 
+ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+     messages = [
+@@ -351,7 +487,7 @@ def gpt_extract_theme(answer_text, client: OpenAIClient, model="gpt-4o-mini"):
+         {"role": "user", "content": prompts.EXTRACT_THEME_USER_PROMPT.format(answer_text=answer_text)}
+     ]
+     print("Calling LLM to extract theme...")
+-    return client.chat_completion(model=model, messages=messages)
++    return client.chat_completion(model=model, messages=messages, call_label="extract_theme")
+ 
+ 
+ 
+@@ -370,7 +506,13 @@ def check_conversation_continuity(previous_page, current_page, client: OpenAICli
+         {"role": "system", "content": prompts.CONTINUITY_CHECK_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    response = client.chat_completion(model=model, messages=messages, temperature=0.0, max_tokens=10)
++    response = client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.0,
++        max_tokens=10,
++        call_label="check_conversation_continuity",
++    )
+     return response.strip().lower() == "true"
+ 
+ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient, model="gpt-4o-mini"):
+@@ -383,4 +525,10 @@ def generate_page_meta_info(last_page_meta, current_page, client: OpenAIClient,
+         {"role": "system", "content": prompts.META_INFO_SYSTEM_PROMPT},
+         {"role": "user", "content": user_prompt}
+     ]
+-    return client.chat_completion(model=model, messages=messages, temperature=0.3, max_tokens=100).strip() 
+\ No newline at end of file
++    return client.chat_completion(
++        model=model,
++        messages=messages,
++        temperature=0.3,
++        max_tokens=100,
++        call_label="generate_page_meta_info",
++    ).strip() 

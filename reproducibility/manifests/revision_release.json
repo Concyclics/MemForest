@@ -35,5 +35,16 @@
     "gemma": "results/gemma",
     "zep_local": "results/zep_local",
     "judge_prompt_sensitivity": "results/judge_prompt_sensitivity"
+  },
+  "implementations": {
+    "index": "baselines/README.md",
+    "evermemos": "baselines/evermemos",
+    "mem0": "baselines/mem0",
+    "lightmem": "baselines/lightmem",
+    "memoryos": "baselines/memoryos",
+    "mempalace": "baselines/mempalace",
+    "zep_local": "baselines/zep_local",
+    "shared_judge": "evaluation/unified_deepseek_judge.py",
+    "packaging": "pinned upstream commit plus complete local patch; third-party repositories are not vendored"
   }
 }

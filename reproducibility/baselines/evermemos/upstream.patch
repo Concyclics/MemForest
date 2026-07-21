@@ -1,0 +1,3511 @@
+diff --git a/docs/usage/CONFIGURATION_GUIDE.md b/docs/usage/CONFIGURATION_GUIDE.md
+index deac31711cf96f63b34dc0775d6893241ed3b25d..3349dc1dea24e966239cd7e02634e56830200574 100644
+--- a/docs/usage/CONFIGURATION_GUIDE.md
++++ b/docs/usage/CONFIGURATION_GUIDE.md
+@@ -140,6 +140,11 @@ RERANK_MODEL=Qwen3-Reranker-4B
+ >   ```bash
+ >   vllm serve Qwen/Qwen3-Embedding-4B --task embed --trust-remote-code
+ >   ```
++>   If Hugging Face starts returning `429 Too Many Requests` during server startup, pre-download once and serve the local snapshot instead:
++>   ```bash
++>   MODEL_ID=Qwen/Qwen3-Embedding-0.6B ./run_vllm_embedding_server.sh
++>   ```
++>   This launcher keeps the served model name as `Qwen/Qwen3-Embedding-0.6B`, so existing `VECTORIZE_MODEL` or `EMBED_MODEL` settings do not need to change.
+ > - **Reward/Reranker Models** (See [vLLM PR #19260](https://github.com/vllm-project/vllm/pull/19260) for details):
+ >   ```bash
+ >   vllm serve Qwen/Qwen3-Reranker-4B --task reward --trust-remote-code
+diff --git a/evaluation/cli.py b/evaluation/cli.py
+index 04c67cb838321d7c0d79b4eca70ce9dfb666a72e..ff88953b74fef8846f3f4278513ba6a1f91df17c 100644
+--- a/evaluation/cli.py
++++ b/evaluation/cli.py
+@@ -9,6 +9,7 @@ Usage:
+ 
+ import asyncio
+ import argparse
++import json
+ import os
+ import sys
+ from pathlib import Path
+@@ -61,6 +62,46 @@ def deep_merge_config(base: dict, override: dict) -> dict:
+     return result
+ 
+ 
++def load_error_conversation_ids(run_dir: Path) -> list[str]:
++    """
++    Load failed conversation IDs from a previous EverMemOS run directory.
++
++    Expected files:
++        {run_dir}/memcells/errors/conv_*_error.json
++    """
++    errors_dir = run_dir / "memcells" / "errors"
++    if not errors_dir.exists():
++        return []
++
++    conversation_ids: list[str] = []
++    for error_file in sorted(errors_dir.glob("conv_*_error.json")):
++        try:
++            with open(error_file, "r", encoding="utf-8") as f:
++                payload = json.load(f)
++            conv_id = payload.get("conversation_id")
++            if conv_id:
++                conversation_ids.append(conv_id)
++        except Exception:
++            continue
++
++    # Deduplicate while preserving order
++    return list(dict.fromkeys(conversation_ids))
++
++
++def filter_dataset_by_conversation_ids(dataset, conversation_ids: list[str]):
++    """Restrict dataset to the specified conversation IDs."""
++    selected_ids = set(conversation_ids)
++    dataset.conversations = [
++        conv for conv in dataset.conversations if conv.conversation_id in selected_ids
++    ]
++    dataset.qa_pairs = [
++        qa
++        for qa in dataset.qa_pairs
++        if qa.metadata.get("conversation_id") in selected_ids
++    ]
++    return dataset
++
++
+ async def main():
+     """Main function."""
+     parser = argparse.ArgumentParser(description="Memory System Evaluation Framework")
+@@ -124,6 +165,12 @@ async def main():
+         help="Before Add stage, clear database data for the groups (group_id=conversation_id) involved in this run. "
+              "Useful for debugging to avoid polluted data.",
+     )
++    parser.add_argument(
++        "--error-conversations-from",
++        type=str,
++        default=None,
++        help="Restrict the dataset to conversation IDs found under {run_dir}/memcells/errors from a previous run.",
++    )
+ 
+     args = parser.parse_args()
+ 
+@@ -199,10 +246,29 @@ async def main():
+     if max_content_length:
+         console.print(f"  ⚠️  Max content length: {max_content_length} characters")
+ 
+-    # Smart load with auto conversion
++    # Smart load with auto conversion.
++    # Prefer the declared data.format so dataset aliases can reuse an existing
++    # converter/loader without requiring a duplicated converter registration.
++    dataset_format = dataset_config.get("data", {}).get("format", args.dataset)
+     dataset = load_dataset(
+-        args.dataset, str(data_path), max_content_length=max_content_length
++        dataset_format, str(data_path), max_content_length=max_content_length
+     )
++    # Preserve the user-facing dataset name for reporting/output semantics.
++    dataset.dataset_name = args.dataset
++
++    if args.error_conversations_from:
++        error_run_dir = Path(args.error_conversations_from)
++        failed_conversation_ids = load_error_conversation_ids(error_run_dir)
++        if not failed_conversation_ids:
++            console.print(
++                f"[yellow]⚠️  No failed conversations found under {error_run_dir / 'memcells' / 'errors'}[/yellow]"
++            )
++            return
++
++        dataset = filter_dataset_by_conversation_ids(dataset, failed_conversation_ids)
++        console.print(
++            f"  🔁 Restricted to {len(dataset.conversations)} failed conversations from: {error_run_dir}"
++        )
+ 
+     console.print(
+         f"  ✅ Loaded {len(dataset.conversations)} conversations, {len(dataset.qa_pairs)} QA pairs"
+@@ -211,6 +277,9 @@ async def main():
+     # Determine output directory
+     if args.output_dir:
+         output_dir = Path(args.output_dir)
++    elif args.error_conversations_from:
++        error_run_dir = Path(args.error_conversations_from)
++        output_dir = error_run_dir.parent / f"{error_run_dir.name}-retry-errors"
+     else:
+         # Generate output directory name based on run_name presence
+         if args.run_name:
+diff --git a/evaluation/config/datasets/longmemeval.yaml b/evaluation/config/datasets/longmemeval.yaml
+index 9c4157e45f931b44f8985b831e8ed458c77cb103..a6c58421a79347a019c07debc797b0f4bbfaa0bc 100644
+--- a/evaluation/config/datasets/longmemeval.yaml
++++ b/evaluation/config/datasets/longmemeval.yaml
+@@ -1,20 +1,16 @@
+-# LongMemEval Dataset Configuration
++# LongMemEval Full S Dataset Configuration
+ 
+ name: "longmemeval"
+ version: "1.0"
+-description: "Long-term Memory Evaluation benchmark"
++description: "LongMemEval full S dataset (500 questions)"
+ 
+ # Memory language setting (overrides MEMORY_LANGUAGE env var)
+ memory_language: "en"
+ 
+ # Data configuration
+ data:
+-  path: "longmemeval"  # Directory containing raw and converted files
+-  format: "longmemeval"  # Needs conversion to Locomo format
+-  
+-  # Converter will look for:
+-  # - longmemeval/longmemeval_s_cleaned.json (raw)
+-  # - longmemeval/longmemeval_s_locomo_style.json (converted, auto-generated)
++  path: "evaluation/data/longmemeval/longmemeval_s_cleaned.json"
++  format: "longmemeval"
+   
+   # Content length limit (for very long messages)
+   max_content_length: 8000  # Truncate messages longer than this (characters)
+@@ -25,12 +21,12 @@ evaluation:
+   
+   llm:
+     provider: "openai"
+-    model: "gpt-4o-mini"
+-    api_key: "${LLM_API_KEY}"
+-    base_url: "${LLM_BASE_URL:https://openrouter.ai/api/v1}"
++    model: "${EVAL_LLM_MODEL:Qwen/Qwen3-30B-A3B-Instruct-2507-FP8}"
++    api_key: "${EVAL_LLM_API_KEY:EMPTY}"
++    base_url: "${EVAL_LLM_BASE_URL:http://localhost:8001/v1}"
+   
+   num_runs: 3
++  num_workers: ${EVAL_NUM_WORKERS:8}
+   
+   # LongMemEval categories: "single-session-user", "multi-session-user", etc.
+   filter_category: []  # If you need to filter, add to the list: ["single-session-user", ...]
+-
+diff --git a/evaluation/src/adapters/evermemos/config.py b/evaluation/src/adapters/evermemos/config.py
+index cd381bb4042624f4866358f4afc90cd00978e7a7..41d94c5ed0bede947ea665abdc14b70c1de8ae54 100644
+--- a/evaluation/src/adapters/evermemos/config.py
++++ b/evaluation/src/adapters/evermemos/config.py
+@@ -8,7 +8,7 @@ class ExperimentConfig:
+     experiment_name: str = "locomo_evaluation"
+     datase_path: str = "data/locomo10.json"
+     use_emb: bool = True
+-    use_reranker: bool = True
++    use_reranker: bool = False
+     use_agentic_retrieval: bool = True
+     use_multi_query: bool = True
+     num_conv: int = 10
+diff --git a/evaluation/src/adapters/evermemos/stage1_memcells_extraction.py b/evaluation/src/adapters/evermemos/stage1_memcells_extraction.py
+index 95a48c289f60d3518fc2e2f7336cb9620fce9a4c..915bfa3611c4acd8905e94dd909c3812c04f0806 100644
+--- a/evaluation/src/adapters/evermemos/stage1_memcells_extraction.py
++++ b/evaluation/src/adapters/evermemos/stage1_memcells_extraction.py
+@@ -63,7 +63,16 @@ from evaluation.src.adapters.evermemos.tools import (
+ )
+ 
+ from evaluation.src.adapters.evermemos.config import ExperimentConfig
+-from core.oxm.mongo.mongo_utils import generate_object_id_str
++from evaluation.src.utils.perf_trace import (
++    get_trace_logger,
++    trace_context,
++    utc_now_iso,
++)
++try:
++    from core.oxm.mongo.mongo_utils import generate_object_id_str
++except Exception:
++    def generate_object_id_str() -> str:
++        return uuid.uuid4().hex[:24]
+ from datetime import datetime, timedelta
+ from pathlib import Path
+ 
+@@ -195,7 +204,11 @@ async def _extract_all_memories_for_memcell(
+         group_id=None,
+     )
+ 
+-    episode_memory = await episode_extractor.extract_memory(episode_request)
++    with trace_context(
++        operation="episode_extraction",
++        memcell_event_id=getattr(memcell, "event_id", None),
++    ):
++        episode_memory = await episode_extractor.extract_memory(episode_request)
+ 
+     if episode_memory and episode_memory.episode:
+         memcell.episode = episode_memory.episode
+@@ -204,11 +217,15 @@ async def _extract_all_memories_for_memcell(
+ 
+         # 2. Extract Foresight (optional)
+         if foresight_extractor:
+-            foresight_memories = (
+-                await foresight_extractor.generate_foresight_memories_for_episode(
+-                    episode_memory
++            with trace_context(
++                operation="foresight_extraction",
++                memcell_event_id=getattr(memcell, "event_id", None),
++            ):
++                foresight_memories = (
++                    await foresight_extractor.generate_foresight_memories_for_episode(
++                        episode_memory
++                    )
+                 )
+-            )
+             if foresight_memories:
+                 memcell.foresight_memories = foresight_memories
+     else:
+@@ -276,7 +293,12 @@ async def memcell_extraction_from_conversation(
+             # group_id="group_1",
+         )
+         # ❌ Remove retry mechanism, let errors be exposed directly
+-        result = await memcell_extractor.extract_memcell(request)
++        with trace_context(
++            operation="memcell_boundary_detection",
++            message_index=idx,
++            history_size=len(history_raw_data_list),
++        ):
++            result = await memcell_extractor.extract_memcell(request)
+         memcell_result = result[0]
+         # print(f"   ✅ Memcell result: {memcell_result}")  # Commented to avoid interrupting progress bar
+         if memcell_result is None:
+@@ -370,6 +392,8 @@ async def process_single_conversation(
+     progress: Progress = None,
+     task_id: int = None,
+     config: ExperimentConfig = None,  # Pass configuration
++    trace_conversation_id: str = None,
++    event_log_num_workers: int = 20,
+ ) -> tuple:
+     """Process single conversation and return results (with clustering and Profile extraction).
+ 
+@@ -386,236 +410,334 @@ async def process_single_conversation(
+     Returns:
+         tuple: (conv_id, memcell_list)
+     """
+-    # Update status to processing
+-    if progress and task_id is not None:
+-        progress.update(task_id, status="Processing")
+-
+-    # Create components based on configuration
+-    cluster_mgr = None
+-    cluster_state = None
+-    cluster_storage = None
+-    profile_mgr = None
+-    profile_storage = None
+-
+-    # Create MemCellExtractor
+-    raw_data_list = convert_conversation_to_raw_data_list(conversation)
+-    memcell_extractor = ConvMemCellExtractor(llm_provider=llm_provider)
+-
+-    # Conditional creation: Cluster manager (per-conversation)
+-    if config and config.enable_clustering:
+-        cluster_storage = InMemoryClusterStorage(
+-            enable_persistence=True,
+-            persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}",
+-        )
+-        cluster_config = ClusterManagerConfig(
+-            similarity_threshold=config.cluster_similarity_threshold,
+-            max_time_gap_days=config.cluster_max_time_gap_days,
+-        )
+-        cluster_mgr = ClusterManager(config=cluster_config)
+-        cluster_state = ClusterState()
+-
+-    # Conditional creation: Profile manager
+-    if config and config.enable_profile_extraction:
+-        profile_storage = InMemoryProfileStorage(
+-            enable_persistence=True,
+-            persist_dir=Path(save_dir) / "profiles" / f"conv_{conv_id}",
+-            enable_versioning=True,
+-        )
++    trace_conversation_id = trace_conversation_id or conv_id
++    stage_started_at = utc_now_iso()
++    stage_started_perf = time.perf_counter()
++    memcell_extraction_duration_sec = 0.0
++    event_log_extraction_duration_sec = 0.0
++    clustering_duration_sec = 0.0
++    profile_duration_sec = 0.0
++    memcell_count = 0
++
++    try:
++        with trace_context(stage="add", conversation_id=trace_conversation_id):
++            trace_logger = get_trace_logger()
++            if trace_logger:
++                trace_logger.log_stage_timing(
++                    {
++                        "record_type": "stage_timing",
++                        "stage": "add",
++                        "entity_type": "conversation",
++                        "conversation_id": trace_conversation_id,
++                        "conversation_index": conv_id,
++                        "message_count": len(conversation),
++                        "memcell_count": 0,
++                        "started_at": stage_started_at,
++                        "ended_at": None,
++                        "duration_sec": None,
++                        "status": "started",
++                    }
++                )
+ 
+-        # Set scenario type dynamically
+-        scenario = (
+-            ScenarioType.ASSISTANT
+-            if config.profile_scenario.lower() == "assistant"
+-            else ScenarioType.GROUP_CHAT
+-        )
++            # Update status to processing
++            if progress and task_id is not None:
++                progress.update(task_id, status="Processing")
++
++            # Create components based on configuration
++            cluster_mgr = None
++            cluster_state = None
++            cluster_storage = None
++            profile_mgr = None
++            profile_storage = None
++
++            # Create MemCellExtractor
++            raw_data_list = convert_conversation_to_raw_data_list(conversation)
++            memcell_extractor = ConvMemCellExtractor(llm_provider=llm_provider)
++
++            # Conditional creation: Cluster manager (per-conversation)
++            if config and config.enable_clustering:
++                cluster_storage = InMemoryClusterStorage(
++                    enable_persistence=True,
++                    persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}",
++                )
++                cluster_config = ClusterManagerConfig(
++                    similarity_threshold=config.cluster_similarity_threshold,
++                    max_time_gap_days=config.cluster_max_time_gap_days,
++                )
++                cluster_mgr = ClusterManager(config=cluster_config)
++                cluster_state = ClusterState()
++
++            # Conditional creation: Profile manager
++            if config and config.enable_profile_extraction:
++                profile_storage = InMemoryProfileStorage(
++                    enable_persistence=True,
++                    persist_dir=Path(save_dir) / "profiles" / f"conv_{conv_id}",
++                    enable_versioning=True,
++                )
+ 
+-        profile_config = ProfileManagerConfig(
+-            scenario=scenario,
+-            min_confidence=config.profile_min_confidence,
+-            batch_size=50,
+-        )
++                scenario = (
++                    ScenarioType.ASSISTANT
++                    if config.profile_scenario.lower() == "assistant"
++                    else ScenarioType.GROUP_CHAT
++                )
+ 
+-        profile_mgr = ProfileManager(
+-            llm_provider=llm_provider,
+-            config=profile_config,
+-            group_id=f"locomo_conv_{conv_id}",
+-            group_name=f"LoComo Conversation {conv_id}",
+-        )
++                profile_config = ProfileManagerConfig(
++                    scenario=scenario,
++                    min_confidence=config.profile_min_confidence,
++                    batch_size=50,
++                )
+ 
+-    # Extract MemCells (pass foresight extraction config)
+-    memcell_list = await memcell_extraction_from_conversation(
+-        raw_data_list,
+-        llm_provider=llm_provider,
+-        memcell_extractor=memcell_extractor,
+-        conv_id=conv_id,
+-        progress=progress,
+-        task_id=task_id,
+-        enable_foresight_extraction=(
+-            config.enable_foresight_extraction if config else False
+-        ),
+-    )
++                profile_mgr = ProfileManager(
++                    llm_provider=llm_provider,
++                    config=profile_config,
++                    group_id=f"locomo_conv_{conv_id}",
++                    group_name=f"LoComo Conversation {conv_id}",
++                )
+ 
+-    # Convert timestamps to datetime objects before saving
+-    for memcell in memcell_list:
+-        if hasattr(memcell, 'timestamp'):
+-            ts = memcell.timestamp
+-            if isinstance(ts, (int, float)):
+-                memcell.timestamp = from_timestamp(ts)
+-            elif isinstance(ts, str):
+-                memcell.timestamp = from_iso_format(ts)
+-            elif not isinstance(ts, datetime):
+-                memcell.timestamp = get_now_with_timezone()
+-
+-    # Concurrent event log generation
+-    if event_log_extractor:
+-        memcells_with_episode = [
+-            (idx, memcell)
+-            for idx, memcell in enumerate(memcell_list)
+-            if hasattr(memcell, 'episode')
+-            and memcell.episode
+-            and memcell.episode != "Episode extraction failed"
+-        ]
+-
+-        async def extract_single_event_log(idx: int, memcell):
+-            event_log = await event_log_extractor.extract_event_log(
+-                memcell=memcell, timestamp=memcell.timestamp
++            memcell_start = time.perf_counter()
++            memcell_list = await memcell_extraction_from_conversation(
++                raw_data_list,
++                llm_provider=llm_provider,
++                memcell_extractor=memcell_extractor,
++                conv_id=conv_id,
++                progress=progress,
++                task_id=task_id,
++                enable_foresight_extraction=(
++                    config.enable_foresight_extraction if config else False
++                ),
+             )
+-            return idx, event_log
++            memcell_extraction_duration_sec = time.perf_counter() - memcell_start
++            memcell_count = len(memcell_list)
++
++            # Convert timestamps to datetime objects before saving
++            for memcell in memcell_list:
++                if hasattr(memcell, 'timestamp'):
++                    ts = memcell.timestamp
++                    if isinstance(ts, (int, float)):
++                        memcell.timestamp = from_timestamp(ts)
++                    elif isinstance(ts, str):
++                        memcell.timestamp = from_iso_format(ts)
++                    elif not isinstance(ts, datetime):
++                        memcell.timestamp = get_now_with_timezone()
++
++            # Concurrent event log generation
++            if event_log_extractor:
++                memcells_with_episode = [
++                    (idx, memcell)
++                    for idx, memcell in enumerate(memcell_list)
++                    if hasattr(memcell, 'episode')
++                    and memcell.episode
++                    and memcell.episode != "Episode extraction failed"
++                ]
+ 
+-        sem = asyncio.Semaphore(20)
++                async def extract_single_event_log(idx: int, memcell):
++                    with trace_context(
++                        operation="event_log_extraction",
++                        memcell_event_id=getattr(memcell, "event_id", None),
++                    ):
++                        event_log = await event_log_extractor.extract_event_log(
++                            memcell=memcell, timestamp=memcell.timestamp
++                        )
++                    return idx, event_log
+ 
+-        async def extract_with_semaphore(idx, memcell):
+-            async with sem:
+-                return await extract_single_event_log(idx, memcell)
++                sem = asyncio.Semaphore(event_log_num_workers)
+ 
+-        print(
+-            f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs..."
+-        )
+-        event_log_tasks = [
+-            extract_with_semaphore(idx, memcell)
+-            for idx, memcell in memcells_with_episode
+-        ]
+-        event_log_results = await asyncio.gather(*event_log_tasks)
++                async def extract_with_semaphore(idx, memcell):
++                    async with sem:
++                        return await extract_single_event_log(idx, memcell)
+ 
+-        for original_idx, event_log in event_log_results:
+-            if event_log:
+-                memcell_list[original_idx].event_log = event_log
++                print(
++                    f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs..."
++                )
++                event_log_start = time.perf_counter()
++                event_log_tasks = [
++                    extract_with_semaphore(idx, memcell)
++                    for idx, memcell in memcells_with_episode
++                ]
++                event_log_results = await asyncio.gather(*event_log_tasks)
++                event_log_extraction_duration_sec = (
++                    time.perf_counter() - event_log_start
++                )
+ 
+-        print(
+-            f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded"
+-        )
++                for original_idx, event_log in event_log_results:
++                    if event_log:
++                        memcell_list[original_idx].event_log = event_log
+ 
+-    # Save single conversation results
+-    memcell_dicts = []
+-    for memcell in memcell_list:
+-        memcell_dict = memcell.to_dict()
+-        if hasattr(memcell, 'event_log') and memcell.event_log:
+-            memcell_dict['event_log'] = memcell.event_log.to_dict()
+-        memcell_dicts.append(memcell_dict)
+-
+-    output_file = os.path.join(save_dir, f"memcell_list_conv_{conv_id}.json")
+-    with open(output_file, "w") as f:
+-        json.dump(memcell_dicts, f, ensure_ascii=False, indent=2)
+-
+-    # Clustering: process each memcell
+-    cluster_stats = {}
+-    if cluster_mgr and cluster_state:
+-        group_id = f"conv_{conv_id}"
+-        for memcell in memcell_list:
+-            memcell_dict = memcell.to_dict() if hasattr(memcell, 'to_dict') else memcell
+-            cluster_id, cluster_state = await cluster_mgr.cluster_memcell(
+-                memcell_dict, cluster_state
+-            )
++                print(
++                    f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded"
++                )
+ 
+-        # Save cluster state
+-        await cluster_storage.save_cluster_state(group_id, cluster_state.to_dict())
++            # Save single conversation results
++            memcell_dicts = []
++            for memcell in memcell_list:
++                memcell_dict = memcell.to_dict()
++                if hasattr(memcell, 'event_log') and memcell.event_log:
++                    memcell_dict['event_log'] = memcell.event_log.to_dict()
++                memcell_dicts.append(memcell_dict)
++
++            output_file = os.path.join(save_dir, f"memcell_list_conv_{conv_id}.json")
++            with open(output_file, "w") as f:
++                json.dump(memcell_dicts, f, ensure_ascii=False, indent=2)
++
++            # Clustering: process each memcell
++            cluster_stats = {}
++            if cluster_mgr and cluster_state:
++                clustering_start = time.perf_counter()
++                group_id = f"conv_{conv_id}"
++                for memcell in memcell_list:
++                    memcell_dict = memcell.to_dict() if hasattr(memcell, 'to_dict') else memcell
++                    cluster_id, cluster_state = await cluster_mgr.cluster_memcell(
++                        memcell_dict, cluster_state
++                    )
+ 
+-        # Export clustering results
+-        cluster_output_dir = Path(save_dir) / "clusters" / f"conv_{conv_id}"
+-        cluster_output_dir.mkdir(parents=True, exist_ok=True)
++                # Save cluster state
++                await cluster_storage.save_cluster_state(group_id, cluster_state.to_dict())
+ 
+-        state_file = cluster_output_dir / f"cluster_state_{group_id}.json"
+-        with open(state_file, "w", encoding="utf-8") as f:
+-            json.dump(
+-                cluster_state.to_dict(), f, ensure_ascii=False, indent=2, default=str
+-            )
++                # Export clustering results
++                cluster_output_dir = Path(save_dir) / "clusters" / f"conv_{conv_id}"
++                cluster_output_dir.mkdir(parents=True, exist_ok=True)
+ 
+-        assignments_file = cluster_output_dir / f"cluster_map_{group_id}.json"
+-        with open(assignments_file, "w", encoding="utf-8") as f:
+-            json.dump(
+-                {"assignments": cluster_state.eventid_to_cluster},
+-                f,
+-                ensure_ascii=False,
+-                indent=2,
+-            )
++                state_file = cluster_output_dir / f"cluster_state_{group_id}.json"
++                with open(state_file, "w", encoding="utf-8") as f:
++                    json.dump(
++                        cluster_state.to_dict(), f, ensure_ascii=False, indent=2, default=str
++                    )
+ 
+-        cluster_stats = cluster_mgr.get_stats()
+-
+-    # Profile extraction: after all memcells processed
+-    profile_stats = {}
+-    profile_count = 0
+-    if profile_mgr and profile_storage and memcell_list:
+-        user_id_set = set()
+-        for memcell in memcell_list:
+-            if hasattr(memcell, 'user_id_list'):
+-                user_id_set.update(memcell.user_id_list or [])
+-        user_id_list = list(user_id_set)
+-
+-        old_profiles_dict = await profile_storage.get_all_profiles()
+-        old_profiles = list(old_profiles_dict.values())
+-
+-        new_profiles = await profile_mgr.extract_profiles(
+-            memcells=memcell_list,  # Pass MemCell objects, not dictionaries
+-            old_profiles=old_profiles,
+-            user_id_list=user_id_list,
+-        )
++                assignments_file = cluster_output_dir / f"cluster_map_{group_id}.json"
++                with open(assignments_file, "w", encoding="utf-8") as f:
++                    json.dump(
++                        {"assignments": cluster_state.eventid_to_cluster},
++                        f,
++                        ensure_ascii=False,
++                        indent=2,
++                    )
+ 
+-        group_id = f"locomo_conv_{conv_id}"
+-        for profile in new_profiles:
+-            if isinstance(profile, dict):
+-                user_id = profile.get('user_id')
+-            else:
+-                user_id = getattr(profile, 'user_id', None)
+-
+-            if user_id:
+-                await profile_storage.save_profile(
+-                    user_id,
+-                    profile,
+-                    metadata={
+-                        "group_id": group_id,
+-                        "scenario": config.profile_scenario if config else "assistant",
+-                        "memcell_count": len(memcell_list),
+-                    },
++                cluster_stats = cluster_mgr.get_stats()
++                clustering_duration_sec = time.perf_counter() - clustering_start
++
++            # Profile extraction: after all memcells processed
++            profile_stats = {}
++            profile_count = 0
++            if profile_mgr and profile_storage and memcell_list:
++                profile_start = time.perf_counter()
++                user_id_set = set()
++                for memcell in memcell_list:
++                    if hasattr(memcell, 'user_id_list'):
++                        user_id_set.update(memcell.user_id_list or [])
++                user_id_list = list(user_id_set)
++
++                old_profiles_dict = await profile_storage.get_all_profiles()
++                old_profiles = list(old_profiles_dict.values())
++
++                new_profiles = await profile_mgr.extract_profiles(
++                    memcells=memcell_list,
++                    old_profiles=old_profiles,
++                    user_id_list=user_id_list,
+                 )
+-                profile_count += 1
+-
+-        profile_stats = profile_mgr.get_stats()
+-
+-    # Save statistics
+-    stats_output = {
+-        "conv_id": conv_id,
+-        "memcells": len(memcell_list),
+-        "clustering_enabled": config.enable_clustering if config else False,
+-        "profile_enabled": config.enable_profile_extraction if config else False,
+-        "foresight_enabled": config.enable_foresight_extraction if config else False,
+-    }
+-
+-    if cluster_stats:
+-        stats_output["clustering"] = cluster_stats
+-    if profile_stats:
+-        stats_output["profiles"] = profile_stats
+-        stats_output["profile_count"] = profile_count
+-
+-    stats_file = Path(save_dir) / "stats" / f"conv_{conv_id}_stats.json"
+-    stats_file.parent.mkdir(parents=True, exist_ok=True)
+-    with open(stats_file, "w") as f:
+-        json.dump(stats_output, f, ensure_ascii=False, indent=2)
+ 
+-    # Update progress
+-    if progress_counter:
+-        progress_counter['completed'] += 1
++                group_id = f"locomo_conv_{conv_id}"
++                for profile in new_profiles:
++                    if isinstance(profile, dict):
++                        user_id = profile.get('user_id')
++                    else:
++                        user_id = getattr(profile, 'user_id', None)
++
++                    if user_id:
++                        await profile_storage.save_profile(
++                            user_id,
++                            profile,
++                            metadata={
++                                "group_id": group_id,
++                                "scenario": config.profile_scenario if config else "assistant",
++                                "memcell_count": len(memcell_list),
++                            },
++                        )
++                        profile_count += 1
++
++                profile_stats = profile_mgr.get_stats()
++                profile_duration_sec = time.perf_counter() - profile_start
++
++            # Save statistics
++            total_duration_sec = time.perf_counter() - stage_started_perf
++            stats_output = {
++                "conv_id": conv_id,
++                "conversation_id": trace_conversation_id,
++                "memcells": len(memcell_list),
++                "clustering_enabled": config.enable_clustering if config else False,
++                "profile_enabled": config.enable_profile_extraction if config else False,
++                "foresight_enabled": config.enable_foresight_extraction if config else False,
++                "timing": {
++                    "started_at": stage_started_at,
++                    "ended_at": utc_now_iso(),
++                    "duration_sec": total_duration_sec,
++                    "memcell_extraction_duration_sec": memcell_extraction_duration_sec,
++                    "event_log_extraction_duration_sec": event_log_extraction_duration_sec,
++                    "clustering_duration_sec": clustering_duration_sec,
++                    "profile_duration_sec": profile_duration_sec,
++                },
++            }
++
++            if cluster_stats:
++                stats_output["clustering"] = cluster_stats
++            if profile_stats:
++                stats_output["profiles"] = profile_stats
++                stats_output["profile_count"] = profile_count
++
++            stats_file = Path(save_dir) / "stats" / f"conv_{conv_id}_stats.json"
++            stats_file.parent.mkdir(parents=True, exist_ok=True)
++            with open(stats_file, "w") as f:
++                json.dump(stats_output, f, ensure_ascii=False, indent=2)
++
++            if trace_logger:
++                trace_logger.log_stage_timing(
++                    {
++                        "record_type": "stage_timing",
++                        "stage": "add",
++                        "entity_type": "conversation",
++                        "conversation_id": trace_conversation_id,
++                        "conversation_index": conv_id,
++                        "message_count": len(conversation),
++                        "memcell_count": len(memcell_list),
++                        "started_at": stage_started_at,
++                        "ended_at": stats_output["timing"]["ended_at"],
++                        "duration_sec": total_duration_sec,
++                        "status": "completed",
++                        "memcell_extraction_duration_sec": memcell_extraction_duration_sec,
++                        "event_log_extraction_duration_sec": event_log_extraction_duration_sec,
++                        "clustering_duration_sec": clustering_duration_sec,
++                        "profile_duration_sec": profile_duration_sec,
++                    }
++                )
+ 
+-    return conv_id, memcell_list
++            if progress_counter:
++                progress_counter['completed'] += 1
++
++            return conv_id, memcell_list
++    except Exception as e:
++        trace_logger = get_trace_logger()
++        if trace_logger:
++            trace_logger.log_stage_timing(
++                {
++                    "record_type": "stage_timing",
++                    "stage": "add",
++                    "entity_type": "conversation",
++                    "conversation_id": trace_conversation_id,
++                    "conversation_index": conv_id,
++                    "message_count": len(conversation),
++                    "memcell_count": memcell_count,
++                    "started_at": stage_started_at,
++                    "ended_at": utc_now_iso(),
++                    "duration_sec": time.perf_counter() - stage_started_perf,
++                    "status": "error",
++                    "error_type": type(e).__name__,
++                    "error_message": str(e),
++                    "memcell_extraction_duration_sec": memcell_extraction_duration_sec,
++                    "event_log_extraction_duration_sec": event_log_extraction_duration_sec,
++                    "clustering_duration_sec": clustering_duration_sec,
++                    "profile_duration_sec": profile_duration_sec,
++                }
++            )
++        raise
+ 
+ 
+ async def main():
+diff --git a/evaluation/src/adapters/evermemos/stage2_index_building.py b/evaluation/src/adapters/evermemos/stage2_index_building.py
+index f49afcb39a37dd2be020babba99ebade75a18af7..6f9891c3438c9acf42a771a11e4562bb28bf5cab 100644
+--- a/evaluation/src/adapters/evermemos/stage2_index_building.py
++++ b/evaluation/src/adapters/evermemos/stage2_index_building.py
+@@ -112,7 +112,10 @@ def tokenize(text: str, stemmer, stop_words: set) -> list[str]:
+ 
+ 
+ def build_bm25_index(
+-    config: ExperimentConfig, data_dir: Path, bm25_save_dir: Path
++    config: ExperimentConfig,
++    data_dir: Path,
++    bm25_save_dir: Path,
++    conv_indices: list[int] | None = None,
+ ) -> list[list[float]]:
+     # --- NLTK Setup ---
+     print("Ensuring NLTK data is available...")
+@@ -126,7 +129,11 @@ def build_bm25_index(
+ 
+     print(f"Reading data from: {data_dir}")
+ 
+-    for i in range(config.num_conv):
++    indices_to_process = (
++        conv_indices if conv_indices is not None else range(config.num_conv)
++    )
++
++    for i in indices_to_process:
+         file_path = data_dir / f"memcell_list_conv_{i}.json"
+         if not file_path.exists():
+             print(f"Warning: File not found, skipping: {file_path}")
+@@ -167,7 +174,12 @@ def build_bm25_index(
+             pickle.dump(index_data, f)
+ 
+ 
+-async def build_emb_index(config: ExperimentConfig, data_dir: Path, emb_save_dir: Path):
++async def build_emb_index(
++    config: ExperimentConfig,
++    data_dir: Path,
++    emb_save_dir: Path,
++    conv_indices: list[int] | None = None,
++):
+     """
+     Build Embedding index (stable version).
+ 
+@@ -190,7 +202,11 @@ async def build_emb_index(config: ExperimentConfig, data_dir: Path, emb_save_dir
+ 
+     import time  # For performance statistics
+ 
+-    for i in range(config.num_conv):
++    indices_to_process = (
++        conv_indices if conv_indices is not None else range(config.num_conv)
++    )
++
++    for i in indices_to_process:
+         file_path = data_dir / f"memcell_list_conv_{i}.json"
+         if not file_path.exists():
+             print(f"Warning: File not found, skipping: {file_path}")
+diff --git a/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py b/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py
+index 46bf258f1f6e0540f04e2e62aa6a9f233411b127..080a1b17f2b5127d5fbb27fb25ac32796ffee03a 100644
+--- a/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py
++++ b/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py
+@@ -641,36 +641,45 @@ async def agentic_retrieval(
+     print(f"{'='*60}")
+     print(f"  [Start] Time: {time.strftime('%H:%M:%S')}")
+ 
+-    # Round 1: Hybrid search Top 20
+-    print(f"  [Round 1] Hybrid search for Top 20...")
++    response_top_k = max(1, int(getattr(config, "response_top_k", 10)))
+ 
+-    round1_top20 = await hybrid_search_with_rrf(
++    # Use the configured response budget consistently through retrieval.
++    round1_top_n = response_top_k
++    sufficiency_top_n = response_top_k
++
++    # Round 1: Hybrid search Top-K
++    print(f"  [Round 1] Hybrid search for Top {round1_top_n}...")
++
++    round1_top_results = await hybrid_search_with_rrf(
+         query=query,
+         emb_index=emb_index,
+         bm25=bm25,
+         docs=docs,
+-        top_n=20,
++        top_n=round1_top_n,
+         emb_candidates=config.hybrid_emb_candidates,
+         bm25_candidates=config.hybrid_bm25_candidates,
+         rrf_k=config.hybrid_rrf_k,
+     )
+ 
+-    metadata["round1_count"] = len(round1_top20)
+-    print(f"  [Round 1] Retrieved {len(round1_top20)} documents")
++    metadata["round1_count"] = len(round1_top_results)
++    print(f"  [Round 1] Retrieved {len(round1_top_results)} documents")
+ 
+-    if not round1_top20:
++    if not round1_top_results:
+         print(f"  [Warning] No results from Round 1")
+         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+         return [], metadata
+ 
+-    # Rerank Top 20 to Top 10 for Sufficiency Check
+-    print(f"  [Rerank] Reranking Top 20 to get Top 10 for sufficiency check...")
++    # Rerank Round 1 results to the configured response budget for sufficiency check
++    print(
++        f"  [Rerank] Reranking Top {len(round1_top_results)} to get Top {sufficiency_top_n} "
++        "for sufficiency check..."
++    )
+ 
+     if config.use_reranker:
+-        reranked_top10 = await reranker_search(
++        reranked_top_results = await reranker_search(
+             query=query,
+-            results=round1_top20,
+-            top_n=10,
++            results=round1_top_results,
++            top_n=sufficiency_top_n,
+             reranker_instruction=config.reranker_instruction,
+             batch_size=config.reranker_batch_size,
+             max_retries=config.reranker_max_retries,
+@@ -679,29 +688,33 @@ async def agentic_retrieval(
+             fallback_threshold=config.reranker_fallback_threshold,
+             config=config,
+         )
+-        metadata["round1_reranked_count"] = len(reranked_top10)
+-        print(f"  [Rerank] Got Top 10 for sufficiency check")
++        metadata["round1_reranked_count"] = len(reranked_top_results)
++        print(f"  [Rerank] Got Top {len(reranked_top_results)} for sufficiency check")
+     else:
+-        # If not using reranker, take first 10 directly
+-        reranked_top10 = round1_top20[:10]
+-        metadata["round1_reranked_count"] = 10
+-        print(f"  [No Rerank] Using original Top 10 for sufficiency check")
++        # If not using reranker, take the first K directly
++        reranked_top_results = round1_top_results[:sufficiency_top_n]
++        metadata["round1_reranked_count"] = len(reranked_top_results)
++        print(
++            f"  [No Rerank] Using original Top {len(reranked_top_results)} for sufficiency check"
++        )
+ 
+-    if not reranked_top10:
+-        print(f"  [Warning] Reranking failed, falling back to original Top 20")
++    if not reranked_top_results:
++        print(
++            f"  [Warning] Reranking failed, falling back to original Top {len(round1_top_results)}"
++        )
+         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+-        return round1_top20, metadata
++        return round1_top_results, metadata
+ 
+     # LLM Sufficiency Check
+-    print(f"  [LLM] Checking sufficiency on Top 10...")
++    print(f"  [LLM] Checking sufficiency on Top {len(reranked_top_results)}...")
+ 
+     is_sufficient, reasoning, missing_info, key_info = (
+         await agentic_utils.check_sufficiency(
+             query=query,
+-            results=reranked_top10,  # Use reranked Top 10
++            results=reranked_top_results,
+             llm_provider=llm_provider,  # Use LLMProvider
+             llm_config=llm_config,
+-            max_docs=10,  # Explicitly check only 10 documents
++            max_docs=sufficiency_top_n,
+         )
+     )
+ 
+@@ -715,9 +728,9 @@ async def agentic_retrieval(
+         print(f"  [LLM] Key Info Found: {', '.join(key_info)}")
+ 
+     if is_sufficient:
+-        print(f"  [Decision] Sufficient! Using reranked Top 10 results")
++        print(f"  [Decision] Sufficient! Using reranked Top {len(reranked_top_results)} results")
+ 
+-        final_results = reranked_top10
++        final_results = reranked_top_results
+         metadata["final_count"] = len(final_results)
+         metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+ 
+@@ -741,12 +754,12 @@ async def agentic_retrieval(
+         # Generate 2-3 complementary queries
+         refined_queries, query_strategy = await agentic_utils.generate_multi_queries(
+             original_query=query,
+-            results=reranked_top10,  # Based on Top 10 generate improved queries
++            results=reranked_top_results,  # Based on sufficiency set generate improved queries
+             missing_info=missing_info,
+             llm_provider=llm_provider,  # Use LLMProvider
+             llm_config=llm_config,
+             key_info=key_info,  # New: pass found key information
+-            max_docs=10,
++            max_docs=sufficiency_top_n,
+             num_queries=3,  # Expect to generate 3 queries
+         )
+ 
+@@ -804,12 +817,12 @@ async def agentic_retrieval(
+ 
+         refined_query = await agentic_utils.generate_refined_query(
+             original_query=query,
+-            results=reranked_top10,
++            results=reranked_top_results,
+             missing_info=missing_info,
+             llm_provider=llm_provider,
+             llm_config=llm_config,
+             key_info=key_info,  # New: pass found key information
+-            max_docs=10,
++            max_docs=sufficiency_top_n,
+         )
+ 
+         metadata["refined_query"] = refined_query
+@@ -832,31 +845,32 @@ async def agentic_retrieval(
+         metadata["round2_count"] = len(round2_results)
+         print(f"  [Round 2] Retrieved {len(round2_results)} documents")
+ 
+-    # Merge: ensure total of 40 documents
+-    print(f"  [Merge] Combining Round 1 and Round 2 to ensure 40 documents...")
++    combined_target = int(getattr(config, "combined_total", 40))
++    # Merge: ensure total of combined_target documents
++    print(f"  [Merge] Combining Round 1 and Round 2 to ensure {combined_target} documents...")
+ 
+     # Use event_id for deduplication instead of Python memory address
+     # Reason: BM25 and Embedding indices load JSON separately, creating different Python objects
+-    round1_ids = {doc.get("event_id", id(doc)) for doc, _ in round1_top20}
++    round1_ids = {doc.get("event_id", id(doc)) for doc, _ in round1_top_results}
+     round2_unique = [
+         (doc, score)
+         for doc, score in round2_results
+         if doc.get("event_id", id(doc)) not in round1_ids
+     ]
+ 
+-    # Merge: Round1 Top20 + Round2 deduplicated documents (ensure total=40)
+-    combined_results = round1_top20.copy()  # First add 20 from Round1
+-    needed_from_round2 = 40 - len(combined_results)  # Need 20 more
++    # Merge: Round1 top-k + Round2 deduplicated documents (ensure total=combined_target)
++    combined_results = round1_top_results.copy()
++    needed_from_round2 = max(combined_target - len(combined_results), 0)
+     combined_results.extend(round2_unique[:needed_from_round2])
+ 
+     actual_count = len(combined_results)
+     duplicates_removed = len(round2_results) - len(round2_unique)
+     round2_added = len(round2_unique[:needed_from_round2])
+ 
+-    print(f"  [Merge] Round1 Top20: 20 documents")
++    print(f"  [Merge] Round1 Top{len(round1_top_results)}: {len(round1_top_results)} documents")
+     print(f"  [Merge] Round2 duplicates removed: {duplicates_removed} documents")
+     print(f"  [Merge] Round2 unique added: {round2_added} documents")
+-    print(f"  [Merge] Combined total: {actual_count} documents (target: 40)")
++    print(f"  [Merge] Combined total: {actual_count} documents (target: {combined_target})")
+ 
+     # Rerank the merged 40 documents
+     if config.use_reranker and len(combined_results) > 0:
+@@ -865,7 +879,7 @@ async def agentic_retrieval(
+         final_results = await reranker_search(
+             query=query,  # Use original query for rerank
+             results=combined_results,
+-            top_n=20,  # Return Top 20 as final result
++            top_n=response_top_k,
+             reranker_instruction=config.reranker_instruction,
+             batch_size=config.reranker_batch_size,
+             max_retries=config.reranker_max_retries,
+@@ -874,12 +888,11 @@ async def agentic_retrieval(
+             fallback_threshold=config.reranker_fallback_threshold,
+             config=config,
+         )
+-
+-        print(f"  [Rerank] Final Top 20 selected")
++        print(f"  [Rerank] Final Top {len(final_results)} selected")
+     else:
+-        # Not using Reranker, return Top 20 directly
+-        final_results = combined_results[:20]
+-        print(f"  [No Rerank] Returning Top 20 from combined results")
++        # Not using Reranker, return top_k directly
++        final_results = combined_results[:response_top_k]
++        print(f"  [No Rerank] Returning Top {len(final_results)} from combined results")
+ 
+     metadata["final_count"] = len(final_results)
+     metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+diff --git a/evaluation/src/adapters/evermemos/stage4_response.py b/evaluation/src/adapters/evermemos/stage4_response.py
+index ad63f9cd99c82d4609a514df38d6eeee4b7d6013..fefda0a9d7e5ed0d764b0390d8dd1d9cd8c88c2d 100644
+--- a/evaluation/src/adapters/evermemos/stage4_response.py
++++ b/evaluation/src/adapters/evermemos/stage4_response.py
+@@ -13,6 +13,7 @@ from tqdm import tqdm
+ 
+ from evaluation.src.adapters.evermemos.config import ExperimentConfig
+ from evaluation.src.adapters.evermemos.prompts.answer_prompts import ANSWER_PROMPT
++from evaluation.src.utils.perf_trace import trace_context
+ 
+ # Use Memory Layer's LLMProvider
+ from memory_layer.llm.llm_provider import LLMProvider
+@@ -125,10 +126,13 @@ async def locomo_response(
+         Generated answer
+     """
+     prompt = ANSWER_PROMPT.format(context=context, question=question)
++    result = ""
++    last_error = None
+ 
+     for i in range(experiment_config.max_retries):
+         try:
+-            result = await llm_provider.generate(prompt=prompt, temperature=0)
++            with trace_context(operation="answer_generation"):
++                result = await llm_provider.generate(prompt=prompt, temperature=0)
+ 
+             # Safe parse FINAL ANSWER (avoid index out of range)
+             if "FINAL ANSWER:" in result:
+@@ -144,12 +148,20 @@ async def locomo_response(
+ 
+             if result == "":
+                 continue
+-            break
++            return result
+         except Exception as e:
++            last_error = e
+             print(f"Error: {e}")
+             continue
+ 
+-    return result
++    if last_error is not None:
++        raise RuntimeError(
++            f"Answer generation failed after {experiment_config.max_retries} retries"
++        ) from last_error
++
++    raise RuntimeError(
++        f"Answer generation returned empty output after {experiment_config.max_retries} retries"
++    )
+ 
+ 
+ async def process_qa(
+diff --git a/evaluation/src/adapters/evermemos_adapter.py b/evaluation/src/adapters/evermemos_adapter.py
+index e0f78c55aa6e2f524f536baf5e52e0be73fc4e6c..3f8816956284a28dc4beee93db429e23c38e740d 100644
+--- a/evaluation/src/adapters/evermemos_adapter.py
++++ b/evaluation/src/adapters/evermemos_adapter.py
+@@ -6,6 +6,8 @@ import asyncio
+ import json
+ import pickle
+ import time
++import traceback
++from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any, Dict, List
+ 
+@@ -25,6 +27,7 @@ from evaluation.src.adapters.base import BaseAdapter
+ from evaluation.src.adapters.registry import register_adapter
+ from evaluation.src.core.data_models import Conversation, SearchResult
+ from common_utils.datetime_utils import to_iso_format
++from evaluation.src.utils.perf_trace import configure_trace_logger
+ 
+ # Import EverMemOS implementation
+ from evaluation.src.adapters.evermemos import (
+@@ -60,6 +63,7 @@ class EverMemOSAdapter(BaseAdapter):
+     def __init__(self, config: dict, output_dir: Path = None):
+         super().__init__(config)
+         self.output_dir = Path(output_dir) if output_dir else Path(".")
++        self.trace_logger = configure_trace_logger(self.output_dir)
+ 
+         # Initialize LLM Provider (shared across all stages)
+         # Read from YAML llm configuration
+@@ -102,7 +106,11 @@ class EverMemOSAdapter(BaseAdapter):
+         return conversation_id
+ 
+     def _check_missing_indexes(
+-        self, index_dir: Path, num_conv: int, index_type: str = "bm25"
++        self,
++        index_dir: Path,
++        num_conv: int | None = None,
++        index_type: str = "bm25",
++        conv_indices: List[int] | None = None,
+     ) -> List[int]:
+         """
+         Check for missing index files.
+@@ -111,13 +119,17 @@ class EverMemOSAdapter(BaseAdapter):
+             index_dir: Index directory
+             num_conv: Total number of conversations
+             index_type: Index type ("bm25" or "embedding")
++            conv_indices: Explicit conversation indices to check
+ 
+         Returns:
+             List of conversation indices with missing indexes
+         """
+         missing_indexes = []
++        indices_to_check = (
++            conv_indices if conv_indices is not None else range(num_conv or 0)
++        )
+ 
+-        for i in range(num_conv):
++        for i in indices_to_check:
+             if index_type == "bm25":
+                 index_file = index_dir / f"bm25_index_conv_{i}.pkl"
+             else:  # embedding
+@@ -128,6 +140,34 @@ class EverMemOSAdapter(BaseAdapter):
+ 
+         return missing_indexes
+ 
++    @staticmethod
++    def _write_conversation_error(
++        errors_dir: Path,
++        conv_id: str,
++        conv_index: str,
++        exc: Exception,
++    ) -> None:
++        """Persist per-conversation error details for post-run debugging."""
++        errors_dir.mkdir(parents=True, exist_ok=True)
++        error_file = errors_dir / f"conv_{conv_index}_error.json"
++        payload = {
++            "conversation_id": conv_id,
++            "conversation_index": conv_index,
++            "error_type": type(exc).__name__,
++            "error_message": str(exc),
++            "traceback": traceback.format_exc(),
++            "timestamp": datetime.now(timezone.utc).isoformat(),
++        }
++        with open(error_file, "w", encoding="utf-8") as f:
++            json.dump(payload, f, ensure_ascii=False, indent=2)
++
++    @staticmethod
++    def _clear_conversation_error(errors_dir: Path, conv_index: str) -> None:
++        """Remove stale error file after a successful retry."""
++        error_file = errors_dir / f"conv_{conv_index}_error.json"
++        if error_file.exists():
++            error_file.unlink()
++
+     async def add(
+         self,
+         conversations: List[Conversation],
+@@ -149,6 +189,8 @@ class EverMemOSAdapter(BaseAdapter):
+ 
+         memcells_dir = output_dir / "memcells"
+         memcells_dir.mkdir(parents=True, exist_ok=True)
++        errors_dir = memcells_dir / "errors"
++        errors_dir.mkdir(parents=True, exist_ok=True)
+         bm25_index_dir = output_dir / "bm25_index"
+         emb_index_dir = output_dir / "vectors"
+         bm25_index_dir.mkdir(parents=True, exist_ok=True)
+@@ -237,8 +279,19 @@ class EverMemOSAdapter(BaseAdapter):
+             total_messages = sum(
+                 len(raw_data_dict[c.conversation_id]) for c in pending_conversations
+             )
++            add_cfg = self.config.get("add", {})
++            add_num_workers = int(add_cfg.get("num_workers", 2))
++            event_log_num_workers = int(add_cfg.get("event_log_num_workers", 4))
+             console.print(f"📝 Pending messages: {total_messages}", style="bold blue")
+             console.print(f"🚀 Starting concurrent processing...\n", style="bold green")
++            console.print(
++                f"   Add concurrency: {add_num_workers} conversations",
++                style="bold yellow",
++            )
++            console.print(
++                f"   Event-log concurrency: {event_log_num_workers} per conversation",
++                style="bold yellow",
++            )
+ 
+             # Use Rich progress bar for concurrent processing
+             start_time = time.time()
+@@ -298,6 +351,7 @@ class EverMemOSAdapter(BaseAdapter):
+                     # Create processing task, pass extracted index
+                     task = stage1_memcells_extraction.process_single_conversation(
+                         conv_id=conv_index,  # Use extracted index
++                        trace_conversation_id=conv_id,
+                         conversation=raw_data_dict[conv_id],  # Data uses original ID
+                         save_dir=str(memcells_dir),
+                         llm_provider=self.llm_provider,
+@@ -306,19 +360,39 @@ class EverMemOSAdapter(BaseAdapter):
+                         progress=progress,
+                         task_id=conv_task_id,
+                         config=self._convert_config_to_experiment_config(),
++                        event_log_num_workers=event_log_num_workers,
+                     )
+                     processing_tasks.append((conv_id, task))
+ 
+                 # Define completion update function
++                add_semaphore = asyncio.Semaphore(add_num_workers)
++
+                 async def run_with_completion(conv_id, task):
+-                    result = await task
+-                    progress.update(
+-                        conversation_tasks[conv_id],
+-                        status="✅",
+-                        completed=progress.tasks[conversation_tasks[conv_id]].total,
+-                    )
+-                    progress.update(main_task, advance=1)
+-                    return result
++                    conv_index = self._extract_conv_index(conv_id)
++                    async with add_semaphore:
++                        try:
++                            result = await task
++                            self._clear_conversation_error(errors_dir, conv_index)
++                            progress.update(
++                                conversation_tasks[conv_id],
++                                status="✅",
++                                completed=progress.tasks[conversation_tasks[conv_id]].total,
++                            )
++                            progress.update(main_task, advance=1)
++                            return {"conv_id": conv_id, "ok": True, "result": result}
++                        except Exception as e:
++                            self._write_conversation_error(
++                                errors_dir=errors_dir,
++                                conv_id=conv_id,
++                                conv_index=conv_index,
++                                exc=e,
++                            )
++                            progress.update(
++                                conversation_tasks[conv_id],
++                                status="❌",
++                            )
++                            progress.update(main_task, advance=1)
++                            return {"conv_id": conv_id, "ok": False, "error": str(e)}
+ 
+                 # Execute all pending tasks concurrently
+                 if processing_tasks:
+@@ -337,8 +411,14 @@ class EverMemOSAdapter(BaseAdapter):
+             elapsed = end_time - start_time
+ 
+             # Statistics
+-            successful_convs = sum(1 for _, memcell_list in results if memcell_list)
+-            total_memcells = sum(len(memcell_list) for _, memcell_list in results)
++            successful_results = [r for r in results if r.get("ok")]
++            failed_results = [r for r in results if not r.get("ok")]
++            successful_convs = sum(
++                1 for r in successful_results if r["result"][1]
++            )
++            total_memcells = sum(
++                len(r["result"][1]) for r in successful_results
++            )
+ 
+             console.print("\n" + "=" * 60, style="dim")
+             console.print("📊 MemCell Extraction Statistics:", style="bold")
+@@ -346,6 +426,10 @@ class EverMemOSAdapter(BaseAdapter):
+                 f"   ✅ Successfully processed: {successful_convs}/{len(pending_conversations)}",
+                 style="green",
+             )
++            console.print(
++                f"   ❌ Failed conversations: {len(failed_results)}",
++                style="red" if failed_results else "green",
++            )
+             console.print(f"   📝 Total memcells: {total_memcells}", style="blue")
+             console.print(f"   ⏱️  Total time: {elapsed:.2f}s", style="yellow")
+             if len(pending_conversations) > 0:
+@@ -353,6 +437,11 @@ class EverMemOSAdapter(BaseAdapter):
+                     f"   🚀 Average per conversation: {elapsed/len(pending_conversations):.2f}s",
+                     style="cyan",
+                 )
++            if failed_results:
++                console.print(
++                    f"   📄 Error details saved to: {errors_dir}",
++                    style="yellow",
++                )
+             console.print("=" * 60, style="dim")
+ 
+         # ========== Stage 2: Index Building ==========
+@@ -363,10 +452,15 @@ class EverMemOSAdapter(BaseAdapter):
+         # Call stage2 implementation to build indexes
+         exp_config = self._convert_config_to_experiment_config()
+         exp_config.num_conv = len(conversations)  # Set conversation count
++        conv_indices = [
++            int(self._extract_conv_index(conv.conversation_id)) for conv in conversations
++        ]
+ 
+         # Smart skip logic: check existing index files
+         bm25_need_build = self._check_missing_indexes(
+-            index_dir=bm25_index_dir, num_conv=len(conversations), index_type="bm25"
++            index_dir=bm25_index_dir,
++            index_type="bm25",
++            conv_indices=conv_indices,
+         )
+ 
+         emb_need_build = []
+@@ -374,8 +468,8 @@ class EverMemOSAdapter(BaseAdapter):
+         if use_hybrid:
+             emb_need_build = self._check_missing_indexes(
+                 index_dir=emb_index_dir,
+-                num_conv=len(conversations),
+                 index_type="embedding",
++                conv_indices=conv_indices,
+             )
+ 
+         # Statistics
+@@ -400,7 +494,10 @@ class EverMemOSAdapter(BaseAdapter):
+                 style="yellow",
+             )
+             stage2_index_building.build_bm25_index(
+-                config=exp_config, data_dir=memcells_dir, bm25_save_dir=bm25_index_dir
++                config=exp_config,
++                data_dir=memcells_dir,
++                bm25_save_dir=bm25_index_dir,
++                conv_indices=bm25_need_build,
+             )
+             console.print("✅ BM25 index building completed", style="green")
+         else:
+@@ -414,7 +511,10 @@ class EverMemOSAdapter(BaseAdapter):
+                     style="yellow",
+                 )
+                 await stage2_index_building.build_emb_index(
+-                    config=exp_config, data_dir=memcells_dir, emb_save_dir=emb_index_dir
++                    config=exp_config,
++                    data_dir=memcells_dir,
++                    emb_save_dir=emb_index_dir,
++                    conv_indices=emb_need_build,
+                 )
+                 console.print("✅ Embedding index building completed", style="green")
+             else:
+@@ -663,6 +763,41 @@ class EverMemOSAdapter(BaseAdapter):
+                 "lightweight_search_mode"
+             ]
+ 
++        # Recall-k control for response context/results.
++        # Preferred key: search.response_top_k; compatibility alias: search.top_k
++        if "response_top_k" in search_config:
++            exp_config.response_top_k = int(search_config["response_top_k"])
++        elif "top_k" in search_config:
++            exp_config.response_top_k = int(search_config["top_k"])
++        # Highest-priority override for k-sweep experiments
++        env_response_top_k = os.getenv("EVERMEMOS_RESPONSE_TOP_K")
++        if env_response_top_k:
++            exp_config.response_top_k = int(env_response_top_k)
++
++        # Optional retrieval candidate knobs (if provided in YAML)
++        if "lightweight_final_top_n" in search_config:
++            exp_config.lightweight_final_top_n = int(
++                search_config["lightweight_final_top_n"]
++            )
++        if "lightweight_bm25_top_n" in search_config:
++            exp_config.lightweight_bm25_top_n = int(
++                search_config["lightweight_bm25_top_n"]
++            )
++        if "lightweight_emb_top_n" in search_config:
++            exp_config.lightweight_emb_top_n = int(
++                search_config["lightweight_emb_top_n"]
++            )
++        if "hybrid_emb_candidates" in search_config:
++            exp_config.hybrid_emb_candidates = int(
++                search_config["hybrid_emb_candidates"]
++            )
++        if "hybrid_bm25_candidates" in search_config:
++            exp_config.hybrid_bm25_candidates = int(
++                search_config["hybrid_bm25_candidates"]
++            )
++        if "hybrid_rrf_k" in search_config:
++            exp_config.hybrid_rrf_k = int(search_config["hybrid_rrf_k"])
++
+         return exp_config
+ 
+     def build_lazy_index(
+diff --git a/evaluation/src/adapters/mem0_adapter.py b/evaluation/src/adapters/mem0_adapter.py
+index 6727663575b6a297a20b763b4ade0261352246c6..c045cfd454f543cd70416352d86b8ade6e2b38e5 100644
+--- a/evaluation/src/adapters/mem0_adapter.py
++++ b/evaluation/src/adapters/mem0_adapter.py
+@@ -8,10 +8,13 @@ Key features:
+ """
+ import asyncio
+ import json
++import os
++import uuid
+ from datetime import datetime, timezone, timedelta
+ from pathlib import Path
+-from typing import Any, Dict, List
++from typing import Any, Dict, List, Optional
+ 
++import aiohttp
+ from rich.console import Console
+ 
+ from evaluation.src.adapters.online_base import OnlineAPIAdapter
+@@ -38,25 +41,40 @@ class Mem0Adapter(OnlineAPIAdapter):
+     
+     def __init__(self, config: dict, output_dir: Path = None):
+         super().__init__(config, output_dir)
+-        
+-        # Import Mem0 async client
+-        try:
+-            from mem0 import AsyncMemoryClient
+-        except ImportError:
+-            raise ImportError(
+-                "Mem0 client not installed. "
+-                "Please install: pip install mem0ai"
+-            )
+-        
+-        # Initialize Mem0 async client
+-        api_key = config.get("api_key", "")
+-        if not api_key:
+-            raise ValueError("Mem0 API key is required. Set 'api_key' in config.")
+-        
+-        self.client = AsyncMemoryClient(api_key=api_key)
+-        self.batch_size = config.get("batch_size", 2)
++
++        self.api_mode = config.get("api_mode", "client")
++        self.api_key = config.get("api_key", "")
++        self.api_url = config.get("api_url", "").rstrip("/")
++        self.host = config.get("host", "")
++        self.client = None
++        self._session: Optional[aiohttp.ClientSession] = None
++
++        if self.api_mode == "local_rest":
++            if not self.api_url:
++                raise ValueError(
++                    "Mem0 local REST mode requires 'api_url' in config."
++                )
++        else:
++            try:
++                from mem0 import AsyncMemoryClient
++            except ImportError:
++                raise ImportError(
++                    "Mem0 client not installed. "
++                    "Please install: pip install mem0ai"
++                )
++
++            if not self.api_key:
++                raise ValueError("Mem0 API key is required. Set 'api_key' in config.")
++
++            client_kwargs = {"api_key": self.api_key}
++            if self.host:
++                client_kwargs["host"] = self.host
++            self.client = AsyncMemoryClient(**client_kwargs)
++
++        self.batch_size = int(os.getenv("MEM0_BATCH_SIZE_OVERRIDE", config.get("batch_size", 2)))
+         self.max_retries = config.get("max_retries", 5)
+         self.max_content_length = config.get("max_content_length", 12000)
++        self.http_timeout_seconds = float(os.getenv("MEM0_HTTP_TIMEOUT_SECONDS", "300"))
+         self.add_interval = config.get("add_interval", 0.0)
+         self.search_interval = config.get("search", {}).get("search_interval", 0.0)
+         self.console = Console()
+@@ -72,12 +90,38 @@ class Mem0Adapter(OnlineAPIAdapter):
+         # Store custom_instructions for async initialization
+         self._custom_instructions = custom_instructions
+         
++        if self.api_mode == "local_rest":
++            print(f"   API Mode: local_rest")
++            print(f"   API URL: {self.api_url}")
++        else:
++            print(f"   API Mode: client")
++            if self.host:
++                print(f"   API Host: {self.host}")
+         print(f"   Batch Size: {self.batch_size}")
+         print(f"   Max Content Length: {self.max_content_length}")
+         if self.add_interval > 0:
+             print(f"   Add Interval: {self.add_interval}s (rate limiting)")
+         if self.search_interval > 0:
+             print(f"   Search Interval: {self.search_interval}s (rate limiting)")
++
++    def _local_headers(self) -> Dict[str, str]:
++        headers = {"Content-Type": "application/json"}
++        if self.api_key:
++            headers["X-API-Key"] = self.api_key
++        return headers
++
++    async def _get_session(self) -> aiohttp.ClientSession:
++        if self._session is None or self._session.closed:
++            timeout = aiohttp.ClientTimeout(total=self.http_timeout_seconds)
++            self._session = aiohttp.ClientSession(
++                headers=self._local_headers(),
++                timeout=timeout,
++            )
++        return self._session
++
++    async def close(self):
++        if self._session and not self._session.closed:
++            await self._session.close()
+     
+     def _convert_timestamp_to_display_timezone(self, timestamp_str: str) -> str:
+         """
+@@ -121,7 +165,7 @@ class Mem0Adapter(OnlineAPIAdapter):
+             **kwargs: Extra parameters
+         """
+         # Update project with custom instructions (if set)
+-        if self._custom_instructions:
++        if self._custom_instructions and self.api_mode != "local_rest":
+             try:
+                 await self.client.update_project(
+                     custom_instructions=self._custom_instructions
+@@ -129,6 +173,11 @@ class Mem0Adapter(OnlineAPIAdapter):
+                 self.console.print("   ✅ Custom instructions set", style="green")
+             except Exception as e:
+                 self.console.print(f"   ⚠️  Failed to set custom instructions: {e}", style="yellow")
++        elif self._custom_instructions:
++            self.console.print(
++                "   ⏭️  Skipping custom instructions update in local REST mode",
++                style="dim",
++            )
+         
+         # Check if need to clean existing data
+         clean_before_add = self.config.get("clean_before_add", False)
+@@ -164,8 +213,17 @@ class Mem0Adapter(OnlineAPIAdapter):
+         
+         for user_id in user_ids_to_clean:
+             try:
+-                # Use async client for delete operation
+-                await self.client.delete_all(user_id=user_id)
++                if self.api_mode == "local_rest":
++                    session = await self._get_session()
++                    async with session.delete(
++                        f"{self.api_url}/memories",
++                        params={"user_id": user_id},
++                    ) as response:
++                        if response.status != 200:
++                            text = await response.text()
++                            raise Exception(f"HTTP {response.status}: {text}")
++                else:
++                    await self.client.delete_all(user_id=user_id)
+                 cleaned_count += 1
+                 self.console.print(f"   ✅ Cleaned: {user_id}", style="green")
+             except Exception as e:
+@@ -198,6 +256,8 @@ class Mem0Adapter(OnlineAPIAdapter):
+         """
+         # Extract user_id
+         user_id = self._extract_user_id(conv, speaker=speaker)
++        progress = kwargs.get("progress")
++        task_id = kwargs.get("task_id")
+         
+         # Handle content truncation (Mem0 specific)
+         truncated_count = 0
+@@ -218,25 +278,64 @@ class Mem0Adapter(OnlineAPIAdapter):
+         
+         # Add messages in batches with retry
+         # Note: messages list corresponds to conv.messages in order
++        session = await self._get_session() if self.api_mode == "local_rest" else None
+         for i in range(0, len(messages), self.batch_size):
+             batch_messages = messages[i : i + self.batch_size]
++            batch_index = i // self.batch_size
+             
+-            # Use the timestamp of the first message in this batch
++            # Use the timestamp of the first message in this batch as the event time.
++            # Mem0 stores memory timestamps in metadata.created_at; without this, the
++            # local REST server falls back to ingestion wall-clock time.
+             timestamp = None
++            created_at_iso = None
++            timestamp_source = None
+             if i < len(conv.messages) and conv.messages[i].timestamp:
+-                timestamp = int(conv.messages[i].timestamp.timestamp())
++                ts = conv.messages[i].timestamp
++                timestamp_source = conv.messages[i].metadata.get("timestamp_source")
++                if ts.tzinfo is None:
++                    ts = ts.replace(tzinfo=timezone.utc)
++                else:
++                    ts = ts.astimezone(timezone.utc)
++                timestamp = int(ts.timestamp())
++                created_at_iso = ts.isoformat()
+             
+             for attempt in range(self.max_retries):
+                 try:
+-                    # Use async client for add operation
+-                    await self.client.add(
+-                        messages=batch_messages,
+-                        timestamp=timestamp,
+-                        user_id=user_id,
+-                    )
++                    if self.api_mode == "local_rest":
++                        payload = {
++                            "messages": batch_messages,
++                            "user_id": user_id,
++                            "conversation_id": conv.conversation_id,
++                            "request_id": f"add:{conv.conversation_id}:{speaker}:{batch_index}",
++                        }
++                        if created_at_iso:
++                            payload["metadata"] = {
++                                "created_at": created_at_iso,
++                                "event_time": created_at_iso,
++                                "conversation_id": conv.conversation_id,
++                                "speaker": speaker,
++                                "batch_index": batch_index,
++                                "timestamp_source": timestamp_source,
++                            }
++                        async with session.post(
++                            f"{self.api_url}/memories",
++                            json=payload,
++                        ) as response:
++                            if response.status != 200:
++                                text = await response.text()
++                                raise Exception(f"HTTP {response.status}: {text}")
++                            await response.json()
++                    else:
++                        await self.client.add(
++                            messages=batch_messages,
++                            timestamp=timestamp,
++                            user_id=user_id,
++                        )
+                     # Wait between add requests to avoid rate limits
+                     if self.add_interval > 0:
+                         await asyncio.sleep(self.add_interval)
++                    if progress is not None and task_id is not None:
++                        progress.update(task_id, advance=len(batch_messages))
+                     break
+                 except Exception as e:
+                     if attempt < self.max_retries - 1:
+@@ -283,20 +382,37 @@ class Mem0Adapter(OnlineAPIAdapter):
+             await asyncio.sleep(self.search_interval)
+         
+         try:
+-            # Use async client for search operation
+-            raw_results = await self.client.search(
+-                query=query,
+-                top_k=top_k,
+-                user_id=user_id,
+-                filters={"AND": [{"user_id": f"{user_id}"}]},
+-            )
+-            
+-            # Debug: print raw search results
+-            self.console.print(f"\n[DEBUG] Mem0 Search Results:", style="yellow")
+-            self.console.print(f"  Query: {query}", style="dim")
+-            self.console.print(f"  User ID: {user_id}", style="dim")
+-            self.console.print(f"  Results: {json.dumps(raw_results, indent=2, ensure_ascii=False)}", style="dim")
+-            
++            if self.api_mode == "local_rest":
++                session = await self._get_session()
++                question_id = kwargs.get("question_id")
++                payload = {
++                    "query": query,
++                    "user_id": user_id,
++                    "conversation_id": conversation_id,
++                    "question_id": question_id,
++                    "request_id": (
++                        f"search:{conversation_id}:{question_id}"
++                        if question_id
++                        else f"search:{conversation_id}:{uuid.uuid4().hex}"
++                    ),
++                    "limit": top_k,
++                    "filters": {"AND": [{"user_id": user_id}]},
++                }
++                async with session.post(
++                    f"{self.api_url}/search",
++                    json=payload,
++                ) as response:
++                    if response.status != 200:
++                        text = await response.text()
++                        raise Exception(f"HTTP {response.status}: {text}")
++                    raw_results = await response.json()
++            else:
++                raw_results = await self.client.search(
++                    query=query,
++                    top_k=top_k,
++                    user_id=user_id,
++                    filters={"AND": [{"user_id": f"{user_id}"}]},
++                )
+         except Exception as e:
+             self.console.print(f"❌ Mem0 search error: {e}", style="red")
+             return []
+@@ -387,15 +503,33 @@ class Mem0Adapter(OnlineAPIAdapter):
+             speaker_b: Speaker B name
+             speaker_a_user_id: Speaker A user ID
+             speaker_b_user_id: Speaker B user ID
+-            top_k: Number of results per user
++            top_k: Per-user candidate limit and global final result limit
+             **kwargs: Additional parameters
+         
+         Returns:
+             SearchResult with formatted_context
+         """
+-        # Extract content from results (already includes timezone-converted timestamps)
+-        speaker_a_memories_text = "\n".join([r["content"] for r in results_a]) if results_a else "(No memories found)"
+-        speaker_b_memories_text = "\n".join([r["content"] for r in results_b]) if results_b else "(No memories found)"
++        # Both perspectives contribute candidates, but the answer context obeys
++        # one global final-memory budget rather than exposing 2 * top_k rows.
++        selected_results = sorted(
++            all_results,
++            key=lambda result: float(result.get("score", 0.0)),
++            reverse=True,
++        )[:top_k]
++        selected_a = [
++            result
++            for result in selected_results
++            if result.get("user_id") == speaker_a_user_id
++        ]
++        selected_b = [
++            result
++            for result in selected_results
++            if result.get("user_id") == speaker_b_user_id
++        ]
++
++        # Results already include timezone-converted timestamps.
++        speaker_a_memories_text = "\n".join([r["content"] for r in selected_a]) if selected_a else "(No memories found)"
++        speaker_b_memories_text = "\n".join([r["content"] for r in selected_b]) if selected_b else "(No memories found)"
+         
+         # Use default template
+         template = self._prompts["online_api"].get("templates", {}).get("default", "")
+@@ -409,15 +543,17 @@ class Mem0Adapter(OnlineAPIAdapter):
+         return SearchResult(
+             query=query,
+             conversation_id=conversation_id,
+-            results=all_results,
++            results=selected_results,
+             retrieval_metadata={
+                 "system": "mem0",
+                 "top_k": top_k,
++                "per_user_candidate_k": top_k,
++                "final_result_count": len(selected_results),
+                 "dual_perspective": True,
+                 "user_ids": [speaker_a_user_id, speaker_b_user_id],
+                 "formatted_context": formatted_context,
+-                "speaker_a_memories_count": len(results_a),
+-                "speaker_b_memories_count": len(results_b),
++                "speaker_a_memories_count": len(selected_a),
++                "speaker_b_memories_count": len(selected_b),
+             }
+         )
+     
+@@ -437,4 +573,3 @@ class Mem0Adapter(OnlineAPIAdapter):
+             "description": "Mem0 - Personalized AI Memory Layer",
+             "adapter": "Mem0Adapter",
+         }
+-
+diff --git a/evaluation/src/adapters/memos_adapter.py b/evaluation/src/adapters/memos_adapter.py
+index ba36fbbf29ff2819e590ef3f0b81a50134c4502c..2cb6ea643fcb87be0f92bbd61c0dcc51e659f190 100644
+--- a/evaluation/src/adapters/memos_adapter.py
++++ b/evaluation/src/adapters/memos_adapter.py
+@@ -4,6 +4,8 @@ Reference: https://www.memos.so/
+ """
+ import asyncio
+ import json
++import uuid
++from contextlib import asynccontextmanager
+ from pathlib import Path
+ from typing import Any, Dict, List, Optional
+ 
+@@ -42,36 +44,60 @@ class MemosAdapter(OnlineAPIAdapter):
+     
+     def __init__(self, config: dict, output_dir: Path = None):
+         super().__init__(config, output_dir)
+-        
++
++        self.api_mode = config.get("api_mode", "openmem")
+         # Get API configuration
+         self.api_url = config.get("api_url", "")
+         if not self.api_url:
+             raise ValueError("Memos API URL is required. Set 'api_url' in config.")
+         
+         api_key = config.get("api_key", "")
+-        if not api_key:
++        if self.api_mode == "openmem" and not api_key:
+             raise ValueError("Memos API key is required. Set 'api_key' in config.")
+-        
+-        self.headers = {
+-            "Content-Type": "application/json",
+-            "Authorization": api_key
+-        }
++
++        self.headers = {"Content-Type": "application/json"}
++        if api_key:
++            if self.api_mode == "openmem":
++                self.headers["Authorization"] = api_key
++            else:
++                self.headers["Authorization"] = f"Token {api_key}"
+         
+         # Retrieval configuration (only keep batch_size and max_retries, other params not supported by official API)
+-        self.batch_size = config.get("batch_size", 9999)  # Memos supports large batches
+-        self.max_retries = config.get("max_retries", 5)
++        self.batch_size = int(config.get("batch_size", 9999))  # Memos supports large batches
++        self.max_retries = int(config.get("max_retries", 5))
+         
+         # Rate limiting configuration (default: 10 requests/second)
+-        requests_per_second = config.get("requests_per_second", 10)
+-        self.rate_limiter = AsyncLimiter(max_rate=requests_per_second, time_period=1.0)
++        requests_per_second = float(config.get("requests_per_second", 10))
++        self.requests_per_second = requests_per_second
++        self.rate_limiter = (
++            AsyncLimiter(max_rate=requests_per_second, time_period=1.0)
++            if requests_per_second > 0
++            else None
++        )
+         
+         # Create aiohttp session (will be initialized on first use)
+         self._session: Optional[aiohttp.ClientSession] = None
+         
+         self.console = Console()
+         
++        print(f"   API Mode: {self.api_mode}")
+         print(f"   API URL: {self.api_url}")
+-        print(f"   Rate Limit: {requests_per_second} requests/second (async)")
++        print(
++            "   Rate Limit: "
++            + (
++                f"{requests_per_second} requests/second (async)"
++                if requests_per_second > 0
++                else "disabled"
++            )
++        )
++
++    @asynccontextmanager
++    async def _maybe_rate_limit(self):
++        if self.rate_limiter is not None:
++            async with self.rate_limiter:
++                yield
++        else:
++            yield
+     
+     async def _get_session(self) -> aiohttp.ClientSession:
+         """
+@@ -119,6 +145,8 @@ class MemosAdapter(OnlineAPIAdapter):
+         # Extract user_id and conv_id
+         user_id = self._extract_user_id(conv, speaker=speaker)
+         conv_id = conv.conversation_id
++        progress = kwargs.get("progress")
++        task_id = kwargs.get("task_id")
+         
+         # Log info
+         speaker_name = conv.metadata.get(speaker, speaker)
+@@ -128,7 +156,10 @@ class MemosAdapter(OnlineAPIAdapter):
+         session = await self._get_session()
+         
+         # Send messages in batches with retry
+-        url = f"{self.api_url}/add/message"
++        if self.api_mode == "product":
++            url = f"{self.api_url}/add"
++        else:
++            url = f"{self.api_url}/add/message"
+         
+         for i in range(0, len(messages), self.batch_size):
+             batch_messages = messages[i : i + self.batch_size]
+@@ -140,7 +171,9 @@ class MemosAdapter(OnlineAPIAdapter):
+                 user_id=user_id,
+                 conv_id=conv_id,
+                 speaker_name=speaker_name,
+-                session=session
++                session=session,
++                progress=progress,
++                task_id=task_id,
+             )
+         
+         return None
+@@ -152,7 +185,9 @@ class MemosAdapter(OnlineAPIAdapter):
+         user_id: str,
+         conv_id: str,
+         speaker_name: str,
+-        session: aiohttp.ClientSession
++        session: aiohttp.ClientSession,
++        progress=None,
++        task_id=None,
+     ) -> None:
+         """
+         Send a batch of messages to Memos API.
+@@ -170,19 +205,30 @@ class MemosAdapter(OnlineAPIAdapter):
+         payload_dict = {
+             "messages": batch_messages,
+             "user_id": user_id,
+-            "conversation_id": conv_id,
+         }
++        if self.api_mode == "product":
++            payload_dict["session_id"] = conv_id
++            payload_dict["async_mode"] = self.config.get("product_async_mode", "sync")
++            payload_dict["request_id"] = (
++                f"add:{conv_id}:{speaker_name}:{len(batch_messages)}:{uuid.uuid4().hex[:8]}"
++            )
++        else:
++            payload_dict["conversation_id"] = conv_id
+         
+         for attempt in range(self.max_retries):
+             try:
+-                # Apply rate limiting
+-                async with self.rate_limiter:
++                # Apply rate limiting if enabled
++                async with self._maybe_rate_limit():
+                     async with session.post(url, json=payload_dict) as response:
+                         if response.status != 200:
+                             text = await response.text()
+                             raise Exception(f"HTTP {response.status}: {text}")
+                         
+                         result = await response.json()
++                        if self.api_mode == "product":
++                            if result.get("code") != 200:
++                                raise Exception(f"API error: {result}")
++                            break
+                         
+                         # Check for token limit exceeded error
+                         if result.get("code") == 40302 and result.get("message") == "Input token limit exceeded":
+@@ -203,7 +249,9 @@ class MemosAdapter(OnlineAPIAdapter):
+                                         user_id=user_id,
+                                         conv_id=conv_id,
+                                         speaker_name=speaker_name,
+-                                        session=session
++                                        session=session,
++                                        progress=progress,
++                                        task_id=task_id,
+                                     )
+                                 return  # Success
+                             else:
+@@ -228,7 +276,9 @@ class MemosAdapter(OnlineAPIAdapter):
+                                         user_id=user_id,
+                                         conv_id=conv_id,
+                                         speaker_name=speaker_name,
+-                                        session=session
++                                        session=session,
++                                        progress=progress,
++                                        task_id=task_id,
+                                     )
+                                     return  # Success
+                                 else:
+@@ -254,6 +304,9 @@ class MemosAdapter(OnlineAPIAdapter):
+                         style="red"
+                     )
+                     raise e
++
++        if progress is not None and task_id is not None:
++            progress.update(task_id, advance=len(batch_messages))
+     
+     async def _search_single_user(
+         self,
+@@ -286,12 +339,26 @@ class MemosAdapter(OnlineAPIAdapter):
+         session = await self._get_session()
+         
+         # Prepare HTTP request
+-        url = f"{self.api_url}/search/memory"
+-        payload_dict = {
+-            "query": query,
+-            "user_id": user_id,
+-            "memory_limit_number": top_k,
+-        }
++        if self.api_mode == "product":
++            url = f"{self.api_url}/search"
++            payload_dict = {
++                "query": query,
++                "user_id": user_id,
++                "session_id": conversation_id,
++                "request_id": f"search:{conversation_id}:{uuid.uuid4().hex}",
++                "top_k": top_k,
++                "pref_top_k": 6,
++                "include_preference": True,
++                "search_tool_memory": False,
++                "include_skill_memory": False,
++            }
++        else:
++            url = f"{self.api_url}/search/memory"
++            payload_dict = {
++                "query": query,
++                "user_id": user_id,
++                "memory_limit_number": top_k,
++            }
+         
+         # Call API with retry mechanism
+         text_mem_res = []
+@@ -299,51 +366,88 @@ class MemosAdapter(OnlineAPIAdapter):
+         
+         for attempt in range(self.max_retries):
+             try:
+-                # Apply rate limiting
+-                async with self.rate_limiter:
++                # Apply rate limiting if enabled
++                async with self._maybe_rate_limit():
+                     async with session.post(url, json=payload_dict) as response:
+                         if response.status != 200:
+                             text = await response.text()
+                             raise Exception(f"HTTP {response.status}: {text}")
+                         
+                         result = await response.json()
+-                        if result.get("message") != "ok":
+-                            raise Exception(f"API error: {result}")
+-                        
+                         data = result.get("data", {})
+-                        text_mem_res = data.get("memory_detail_list", [])
+-                        pref_mem_res = data.get("preference_detail_list", [])
+-                        preference_note = data.get("preference_note", "")
+-                        
+-                        # Standardize field names: rename memory_value to memory
+-                        for i in text_mem_res:
+-                            i.update({"memory": i.pop("memory_value", i.get("memory", ""))})
+-                        
+-                        # Format preference string
+-                        explicit_prefs = [
+-                            p["preference"]
+-                            for p in pref_mem_res
+-                            if p.get("preference_type", "") == "explicit_preference"
+-                        ]
+-                        implicit_prefs = [
+-                            p["preference"]
+-                            for p in pref_mem_res
+-                            if p.get("preference_type", "") == "implicit_preference"
+-                        ]
+-                        
+-                        pref_parts = []
+-                        if explicit_prefs:
+-                            pref_parts.append(
+-                                "Explicit Preference:\n"
+-                                + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(explicit_prefs))
+-                            )
+-                        if implicit_prefs:
+-                            pref_parts.append(
+-                                "Implicit Preference:\n"
+-                                + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(implicit_prefs))
+-                            )
+-                        
+-                        pref_string = "\n".join(pref_parts) + preference_note
++                        if self.api_mode == "product":
++                            if result.get("code") != 200:
++                                raise Exception(f"API error: {result}")
++                            for bucket in data.get("text_mem", []) or []:
++                                text_mem_res.extend(bucket.get("memories", []) or [])
++                            pref_entries = []
++                            for bucket in data.get("pref_mem", []) or []:
++                                pref_entries.extend(bucket.get("memories", []) or [])
++
++                            explicit_prefs = []
++                            implicit_prefs = []
++                            for pref in pref_entries:
++                                pref_text = (
++                                    pref.get("preference")
++                                    or pref.get("memory")
++                                    or pref.get("content")
++                                    or ""
++                                )
++                                pref_type = pref.get("preference_type", "")
++                                if pref_type == "explicit_preference":
++                                    explicit_prefs.append(pref_text)
++                                elif pref_type == "implicit_preference":
++                                    implicit_prefs.append(pref_text)
++                                elif pref_text:
++                                    implicit_prefs.append(pref_text)
++
++                            pref_parts = []
++                            if explicit_prefs:
++                                pref_parts.append(
++                                    "Explicit Preference:\n"
++                                    + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(explicit_prefs))
++                                )
++                            if implicit_prefs:
++                                pref_parts.append(
++                                    "Implicit Preference:\n"
++                                    + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(implicit_prefs))
++                                )
++                            pref_string = "\n".join(pref_parts)
++                        else:
++                            if result.get("message") != "ok":
++                                raise Exception(f"API error: {result}")
++
++                            text_mem_res = data.get("memory_detail_list", [])
++                            pref_mem_res = data.get("preference_detail_list", [])
++                            preference_note = data.get("preference_note", "")
++
++                            for i in text_mem_res:
++                                i.update({"memory": i.pop("memory_value", i.get("memory", ""))})
++
++                            explicit_prefs = [
++                                p["preference"]
++                                for p in pref_mem_res
++                                if p.get("preference_type", "") == "explicit_preference"
++                            ]
++                            implicit_prefs = [
++                                p["preference"]
++                                for p in pref_mem_res
++                                if p.get("preference_type", "") == "implicit_preference"
++                            ]
++
++                            pref_parts = []
++                            if explicit_prefs:
++                                pref_parts.append(
++                                    "Explicit Preference:\n"
++                                    + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(explicit_prefs))
++                                )
++                            if implicit_prefs:
++                                pref_parts.append(
++                                    "Implicit Preference:\n"
++                                    + "\n".join(f"{i + 1}. {p}" for i, p in enumerate(implicit_prefs))
++                                )
++
++                            pref_string = "\n".join(pref_parts) + preference_note
+                 
+                 # Success - break retry loop
+                 break
+@@ -358,10 +462,21 @@ class MemosAdapter(OnlineAPIAdapter):
+         # Convert to standard format
+         results = []
+         for item in text_mem_res:
+-            created_at = item.get("memory_time") or item.get("create_time", "")
++            created_at = (
++                item.get("memory_time")
++                or item.get("create_time")
++                or item.get("created_at")
++                or item.get("metadata", {}).get("created_at", "")
++            )
++            score = (
++                item.get("relativity")
++                or item.get("score")
++                or item.get("metadata", {}).get("relativity")
++                or 0.0
++            )
+             results.append({
+                 "content": item.get("memory", ""),
+-                "score": item.get("relativity", item.get("score", 0.0)),
++                "score": score,
+                 "user_id": user_id,
+                 "metadata": {
+                     "memory_id": item.get("id", ""),
+@@ -502,6 +617,3 @@ class MemosAdapter(OnlineAPIAdapter):
+             "description": "Memos - Memory System with Preference Support",
+             "adapter": "MemosAdapter",
+         }
+-
+-
+-   
+\ No newline at end of file
+diff --git a/evaluation/src/adapters/online_base.py b/evaluation/src/adapters/online_base.py
+index e87822b2c0a4e07a261e4792f86410d23a1bd823..0229f6897cf25f98b1a3037e658b9899b69cc1c5 100644
+--- a/evaluation/src/adapters/online_base.py
++++ b/evaluation/src/adapters/online_base.py
+@@ -30,6 +30,12 @@ from rich.progress import (
+ from evaluation.src.adapters.base import BaseAdapter
+ from evaluation.src.core.data_models import Conversation, SearchResult
+ from evaluation.src.utils.config import load_yaml
++from evaluation.src.utils.perf_trace import (
++    configure_trace_logger,
++    get_trace_logger,
++    trace_context,
++    utc_now_iso,
++)
+ 
+ # Import Memory Layer components
+ from memory_layer.llm.llm_provider import LLMProvider
+@@ -52,6 +58,7 @@ class OnlineAPIAdapter(BaseAdapter):
+     def __init__(self, config: dict, output_dir: Path = None):
+         super().__init__(config)
+         self.output_dir = Path(output_dir) if output_dir else Path(".")
++        self.trace_logger = configure_trace_logger(self.output_dir)
+ 
+         # Initialize LLM Provider (for answer generation)
+         llm_config = config.get("llm", {})
+@@ -89,7 +96,7 @@ class OnlineAPIAdapter(BaseAdapter):
+         Returns:
+             Number of workers for conversation-level concurrency
+         """
+-        return config.get("num_workers", 10)  # Default to 10 if not specified
++        return int(config.get("num_workers", 10))  # Default to 10 if not specified
+ 
+     async def add(self, conversations: List[Conversation], **kwargs) -> Dict[str, Any]:
+         """
+@@ -129,94 +136,124 @@ class OnlineAPIAdapter(BaseAdapter):
+             """Process a single conversation with concurrency control."""
+             async with semaphore:
+                 conv_id = conv.conversation_id
++                started_at = utc_now_iso()
++                started_perf = time.perf_counter()
++                total_messages = 0
++                status = "success"
++                error_message = None
+ 
+-                # Extract conversation info (speaker names, user_ids, perspective mode)
+-                conv_info = self._extract_conversation_info(
+-                    conversation=conv, conversation_id=conv_id
+-                )
++                try:
++                    with trace_context(stage="add", conversation_id=conv_id):
++                        # Extract conversation info (speaker names, user_ids, perspective mode)
++                        conv_info = self._extract_conversation_info(
++                            conversation=conv, conversation_id=conv_id
++                        )
+ 
+-                # Get format type (subclass can override)
+-                format_type = self._get_format_type()
+-
+-                # Organize messages based on perspective
+-                if conv_info["need_dual_perspective"]:
+-                    # Dual perspective: prepare messages for both speakers
+-                    speaker_a_messages = self._conversation_to_messages(
+-                        conv, format_type=format_type, perspective="speaker_a"
+-                    )
+-                    speaker_b_messages = self._conversation_to_messages(
+-                        conv, format_type=format_type, perspective="speaker_b"
+-                    )
+-                    total_messages = len(speaker_a_messages) + len(speaker_b_messages)
+-                    conv_task_id = progress.add_task(
+-                        f"[yellow]Conv-{_conv_label(conv_id)}",
+-                        total=total_messages,
+-                        completed=0,
+-                        status="Processing",
+-                    )
+-
+-                    # Add messages for both users
+-                    result_a = await self._add_user_messages(
+-                        conv,
+-                        speaker_a_messages,
+-                        speaker="speaker_a",
+-                        progress=progress,
+-                        task_id=conv_task_id,
+-                        **kwargs,
+-                    )
+-                    result_b = await self._add_user_messages(
+-                        conv,
+-                        speaker_b_messages,
+-                        speaker="speaker_b",
+-                        progress=progress,
+-                        task_id=conv_task_id,
+-                        **kwargs,
+-                    )
+-
+-                    # Wait for tasks to complete (per-conversation, before releasing semaphore)
+-                    # This is important for systems like Memu that need to limit concurrent tasks
+-                    await self._wait_for_conversation_tasks(
+-                        [result_a, result_b], conversation_id=conv_id, **kwargs
+-                    )
+-
+-                    progress.update(
+-                        conv_task_id, completed=total_messages, status="✅"
+-                    )
+-                    progress.update(main_task, advance=1)
+-                    return conv_id, [result_a, result_b]
+-                else:
+-                    # Single perspective: prepare messages for speaker_a only
+-                    messages = self._conversation_to_messages(
+-                        conv, format_type=format_type, perspective=None
+-                    )
+-                    total_messages = len(messages)
+-                    conv_task_id = progress.add_task(
+-                        f"[yellow]Conv-{_conv_label(conv_id)}",
+-                        total=total_messages,
+-                        completed=0,
+-                        status="Processing",
+-                    )
+-
+-                    # Add messages for single user
+-                    result = await self._add_user_messages(
+-                        conv,
+-                        messages,
+-                        speaker="speaker_a",
+-                        progress=progress,
+-                        task_id=conv_task_id,
+-                        **kwargs,
+-                    )
+-
+-                    # Wait for tasks to complete (per-conversation, before releasing semaphore)
+-                    await self._wait_for_conversation_tasks(
+-                        [result], conversation_id=conv_id, **kwargs
+-                    )
+-
+-                    progress.update(
+-                        conv_task_id, completed=total_messages, status="✅"
+-                    )
+-                    progress.update(main_task, advance=1)
+-                    return conv_id, [result]
++                        # Get format type (subclass can override)
++                        format_type = self._get_format_type()
++
++                        # Organize messages based on perspective
++                        if conv_info["need_dual_perspective"]:
++                            # Dual perspective: prepare messages for both speakers
++                            speaker_a_messages = self._conversation_to_messages(
++                                conv, format_type=format_type, perspective="speaker_a"
++                            )
++                            speaker_b_messages = self._conversation_to_messages(
++                                conv, format_type=format_type, perspective="speaker_b"
++                            )
++                            total_messages = len(speaker_a_messages) + len(
++                                speaker_b_messages
++                            )
++                            conv_task_id = progress.add_task(
++                                f"[yellow]Conv-{_conv_label(conv_id)}",
++                                total=total_messages,
++                                completed=0,
++                                status="Processing",
++                            )
++
++                            # Add messages for both users
++                            result_a = await self._add_user_messages(
++                                conv,
++                                speaker_a_messages,
++                                speaker="speaker_a",
++                                progress=progress,
++                                task_id=conv_task_id,
++                                **kwargs,
++                            )
++                            result_b = await self._add_user_messages(
++                                conv,
++                                speaker_b_messages,
++                                speaker="speaker_b",
++                                progress=progress,
++                                task_id=conv_task_id,
++                                **kwargs,
++                            )
++
++                            # Wait for tasks to complete (per-conversation, before releasing semaphore)
++                            # This is important for systems like Memu that need to limit concurrent tasks
++                            await self._wait_for_conversation_tasks(
++                                [result_a, result_b], conversation_id=conv_id, **kwargs
++                            )
++
++                            progress.update(
++                                conv_task_id, completed=total_messages, status="✅"
++                            )
++                            progress.update(main_task, advance=1)
++                            return conv_id, [result_a, result_b]
++                        else:
++                            # Single perspective: prepare messages for speaker_a only
++                            messages = self._conversation_to_messages(
++                                conv, format_type=format_type, perspective=None
++                            )
++                            total_messages = len(messages)
++                            conv_task_id = progress.add_task(
++                                f"[yellow]Conv-{_conv_label(conv_id)}",
++                                total=total_messages,
++                                completed=0,
++                                status="Processing",
++                            )
++
++                            # Add messages for single user
++                            result = await self._add_user_messages(
++                                conv,
++                                messages,
++                                speaker="speaker_a",
++                                progress=progress,
++                                task_id=conv_task_id,
++                                **kwargs,
++                            )
++
++                            # Wait for tasks to complete (per-conversation, before releasing semaphore)
++                            await self._wait_for_conversation_tasks(
++                                [result], conversation_id=conv_id, **kwargs
++                            )
++
++                            progress.update(
++                                conv_task_id, completed=total_messages, status="✅"
++                            )
++                            progress.update(main_task, advance=1)
++                            return conv_id, [result]
++                except Exception as exc:
++                    status = "error"
++                    error_message = str(exc)
++                    raise
++                finally:
++                    trace_logger = get_trace_logger()
++                    if trace_logger:
++                        trace_logger.log_stage_timing(
++                            {
++                                "record_type": "stage_timing",
++                                "stage": "add",
++                                "entity_type": "conversation",
++                                "conversation_id": conv_id,
++                                "started_at": started_at,
++                                "ended_at": utc_now_iso(),
++                                "duration_sec": time.perf_counter() - started_perf,
++                                "status": status,
++                                "message_count": total_messages,
++                                "error_message": error_message,
++                            }
++                        )
+ 
+         with Progress(
+             SpinnerColumn(),
+@@ -558,6 +595,10 @@ class OnlineAPIAdapter(BaseAdapter):
+         Subclasses can override this method to use their own specific prompt.
+         Defaults to ANSWER_PROMPT_MEMOS (suitable for most systems).
+         """
++        reference_date = kwargs.get("reference_date") or kwargs.get("question_date")
++        if reference_date:
++            context = f"[Reference date: {reference_date}]\n\n{context}"
++
+         # Get answer prompt (subclasses can override _get_answer_prompt)
+         prompt = self._get_answer_prompt().format(context=context, question=query)
+ 
+diff --git a/evaluation/src/converters/longmemeval_converter.py b/evaluation/src/converters/longmemeval_converter.py
+index a3e0890ab3eaecf26e7082cb88a304688b736e9f..46125e92dba3583b259d244e65b4649d86112d80 100644
+--- a/evaluation/src/converters/longmemeval_converter.py
++++ b/evaluation/src/converters/longmemeval_converter.py
+@@ -35,7 +35,7 @@ def convert_time_format(input_str: str) -> str:
+     return ' '.join(parts)
+ 
+ 
+-def convert_lmeval_s_to_locomo_style(lmeval_data: list) -> list:
++def convert_lmeval_s_to_locomo_style(lmeval_data: list, subset_name: str = "") -> list:
+     """
+     Convert LongMemEval-S format to Locomo format.
+     
+@@ -77,7 +77,11 @@ def convert_lmeval_s_to_locomo_style(lmeval_data: list) -> list:
+             "question": data["question"],
+             "answer": data["answer"],
+             "evidence": evidence,
+-            "category": data["question_type"]
++            "category": data["question_type"],
++            "question_date": data.get("question_date"),
++            "answer_session_ids": data.get("answer_session_ids", []),
++            "haystack_session_ids": data.get("haystack_session_ids", []),
++            "subset": subset_name,
+         })
+         
+         # Build conversation
+@@ -133,7 +137,11 @@ class LongMemEvalConverter(BaseConverter):
+         print(f"   Loaded {len(lmeval_data)} items")
+         
+         # Convert format
+-        locomo_style_data = convert_lmeval_s_to_locomo_style(lmeval_data)
++        subset_name = Path(input_paths["raw"]).stem
++        locomo_style_data = convert_lmeval_s_to_locomo_style(
++            lmeval_data,
++            subset_name=subset_name,
++        )
+         
+         # Save result
+         with open(output_path, "w", encoding="utf-8") as f:
+@@ -141,3 +149,23 @@ class LongMemEvalConverter(BaseConverter):
+         
+         print(f"   ✅ Saved {len(locomo_style_data)} entries to {output_path}")
+ 
++
++@register_converter("longmemeval_s_subset")
++class LongMemEvalSSubsetConverter(LongMemEvalConverter):
++    """Alias converter for LongMemEval S subset."""
++
++
++@register_converter("frontier_longmemeval_50")
++class FrontierLongMemEval50Converter(LongMemEvalConverter):
++    """Converter with an isolated cache file for the frozen 50-row audit."""
++
++    def get_output_filename(self) -> str:
++        return "frontier_longmemeval_50_locomo_style.json"
++
++
++@register_converter("performance_longmemeval_12")
++class PerformanceLongMemEval12Converter(LongMemEvalConverter):
++    """Converter with an isolated cache file for the performance subset."""
++
++    def get_output_filename(self) -> str:
++        return "performance_longmemeval_12_locomo_style.json"
+diff --git a/evaluation/src/converters/registry.py b/evaluation/src/converters/registry.py
+index 1b1bdc562c46e692bd79eae6eec60a94453a5b3c..7a8f341edd7e878e183cca9340ad81651a402db3 100644
+--- a/evaluation/src/converters/registry.py
++++ b/evaluation/src/converters/registry.py
+@@ -12,6 +12,11 @@ _CONVERTER_REGISTRY: Dict[str, Type[BaseConverter]] = {}
+ # Converter module mapping (for lazy loading)
+ _CONVERTER_MODULES = {
+     "longmemeval": "evaluation.src.converters.longmemeval_converter",
++    "longmemeval_s_subset": "evaluation.src.converters.longmemeval_converter",
++    "frontier_longmemeval_50": "evaluation.src.converters.longmemeval_converter",
++    "performance_longmemeval_12": "evaluation.src.converters.longmemeval_converter",
++    "long_session_chunk": "evaluation.src.converters.long_session_chunk_converter",
++    "long_session_bundle": "evaluation.src.converters.long_session_chunk_converter",
+     "personamem": "evaluation.src.converters.personamem_converter",
+     # Future converters
+ }
+@@ -86,5 +91,3 @@ def get_converter(name: str) -> Optional[BaseConverter]:
+ def list_converters() -> List[str]:
+     """List all available converters."""
+     return list(_CONVERTER_MODULES.keys())
+-
+-
+diff --git a/evaluation/src/core/loaders.py b/evaluation/src/core/loaders.py
+index 8a77f9a2f86f1157b71bc4f082129b9536618aaa..2d9893422f9f39093276f74ad11258f0426a5d3c 100644
+--- a/evaluation/src/core/loaders.py
++++ b/evaluation/src/core/loaders.py
+@@ -45,10 +45,13 @@ def load_dataset(dataset_name: str, data_path: str, max_content_length: Optional
+             
+             # Build input file paths
+             input_files = converter.get_input_files()
+-            input_paths = {
+-                key: str(data_dir / filename)
+-                for key, filename in input_files.items()
+-            }
++            input_paths = {}
++            for key, filename in input_files.items():
++                # If caller passed an explicit file path, treat it as the primary raw source.
++                if data_path_obj.is_file() and key == "raw":
++                    input_paths[key] = str(data_path_obj)
++                else:
++                    input_paths[key] = str(data_dir / filename)
+             
+             # Execute conversion
+             output_path = str(converter.get_converted_path(data_dir))
+@@ -240,6 +243,10 @@ def _convert_locomo_conversation(conversation_data: dict, conv_id: str, max_cont
+                     "img_url": msg.get("img_url"),
+                     "blip_caption": msg.get("blip_caption"),
+                     "query": msg.get("query"),
++                    "source_session_id": msg.get("source_session_id"),
++                    "source_question_id": msg.get("source_question_id"),
++                    "source_date": msg.get("source_date"),
++                    "source_local_turn_index": msg.get("source_local_turn_index"),
+                     "timestamp_source": timestamp_source,  # Mark timestamp source
+                 }
+             )
+@@ -263,6 +270,25 @@ def _convert_locomo_qa_pair(qa_item: dict, conv_id: str, qa_idx: int) -> QAPair:
+     # If has all_options (PersonaMem multiple choice), save to metadata
+     if "all_options" in qa_item:
+         metadata["all_options"] = qa_item["all_options"]
++    for key in (
++        "answer_session_ids",
++        "haystack_session_ids",
++        "subset",
++        "question_date",
++        "gold_session_indices",
++        "gold_spans",
++        "gold_turn_start",
++        "gold_turn_end",
++        "gold_turn_count",
++        "gold_turn_ids",
++        "source_session_id",
++        "source_date",
++        "assembled_session_id",
++        "bundle_id",
++        "benchmark_name",
++    ):
++        if key in qa_item:
++            metadata[key] = qa_item[key]
+     
+     # Prefer question_id from data if exists, otherwise generate unique ID
+     question_id = qa_item.get("question_id")
+@@ -307,6 +333,3 @@ def _parse_locomo_timestamp(timestamp_str: str) -> Optional[datetime]:
+         # If parse fails, return None and print warning
+         print(f"⚠️  Warning: Failed to parse timestamp '{timestamp_str}', no timestamp will be set")
+         return None
+-
+-
+-
+diff --git a/evaluation/src/core/stages/add_stage.py b/evaluation/src/core/stages/add_stage.py
+index 451c63d5d17e44320b09b0d024b115d8ee13b640..888ed2a45697c4dea397ccfaec962ebebd69b617 100644
+--- a/evaluation/src/core/stages/add_stage.py
++++ b/evaluation/src/core/stages/add_stage.py
+@@ -8,6 +8,9 @@ from logging import Logger
+ from evaluation.src.core.data_models import Conversation, Dataset
+ from evaluation.src.adapters.base import BaseAdapter
+ from evaluation.src.utils.checkpoint import CheckpointManager
++from evaluation.src.utils.answer_session_memory_units import (
++    build_answer_session_memory_units_for_evermemos,
++)
+ 
+ 
+ async def run_add_stage(
+@@ -43,6 +46,22 @@ async def run_add_stage(
+     
+     # Index metadata (lazy load, no need to persist)
+     logger.info("✅ Stage 1 completed")
++
++    has_answer_session_metadata = any(
++        isinstance(qa.metadata, dict) and "answer_session_ids" in qa.metadata
++        for qa in dataset.qa_pairs
++    )
++    adapter_name = adapter.get_system_info().get("name", "").lower()
++    if has_answer_session_metadata and "evermem" in adapter_name:
++        units_path, summary_path = build_answer_session_memory_units_for_evermemos(
++            dataset=dataset,
++            output_dir=output_dir,
++        )
++        logger.info(
++            "✅ Exported answer-session memory-unit artifacts: %s , %s",
++            units_path,
++            summary_path,
++        )
+     
+     # Save checkpoint
+     completed_stages.add("add")
+@@ -50,4 +69,3 @@ async def run_add_stage(
+         checkpoint_manager.save_checkpoint(completed_stages)
+     
+     return {"index": index}
+-
+diff --git a/evaluation/src/core/stages/answer_stage.py b/evaluation/src/core/stages/answer_stage.py
+index c00a1191c49746433c8b67fe869779f74e58af07..c1048205155aa722796bdb9b2d9bc0e6819e1efc 100644
+--- a/evaluation/src/core/stages/answer_stage.py
++++ b/evaluation/src/core/stages/answer_stage.py
+@@ -10,6 +10,7 @@ from tqdm import tqdm
+ from evaluation.src.core.data_models import QAPair, SearchResult, AnswerResult
+ from evaluation.src.adapters.base import BaseAdapter
+ from evaluation.src.utils.checkpoint import CheckpointManager
++from evaluation.src.utils.perf_trace import get_trace_logger, trace_context, utc_now_iso
+ 
+ 
+ def build_context(search_result: SearchResult) -> str:
+@@ -79,7 +80,8 @@ async def run_answer_stage(
+     print(f"{'='*60}")
+     
+     SAVE_INTERVAL = 400  # Save every 400 tasks
+-    MAX_CONCURRENT = 50  # Max concurrency
++    answer_cfg = adapter.config.get("answer", {})
++    MAX_CONCURRENT = int(answer_cfg.get("num_workers", 50))
+     
+     # Load fine-grained checkpoint
+     all_answer_results = {}
+@@ -93,6 +95,7 @@ async def run_answer_stage(
+     processed_count = len(all_answer_results)
+     
+     print(f"Total questions: {total_qa_count}")
++    print(f"Answer concurrency: {MAX_CONCURRENT} workers")
+     if processed_count > 0:
+         print(f"Already processed: {processed_count} questions (from checkpoint)")
+         print(f"Remaining: {total_qa_count - processed_count} questions")
+@@ -140,6 +143,10 @@ async def run_answer_stage(
+         nonlocal completed, failed
+         
+         async with semaphore:
++            started_at = utc_now_iso()
++            started_perf = time.perf_counter()
++            context = ""
++            answer = None
+             try:
+                 # Build context
+                 context = build_context(search_result)
+@@ -165,14 +172,21 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and
+                 
+                 for attempt in range(max_retries):
+                     try:
+-                        answer = await asyncio.wait_for(
+-                            adapter.answer(
+-                                query=query,
+-                                context=context,
+-                                conversation_id=search_result.conversation_id,
+-                            ),
+-                            timeout=timeout_seconds
+-                        )
++                        with trace_context(
++                            stage="answer",
++                            conversation_id=search_result.conversation_id,
++                            question_id=qa.question_id,
++                            query=qa.question,
++                        ):
++                            answer = await asyncio.wait_for(
++                                adapter.answer(
++                                    query=query,
++                                    context=context,
++                                    conversation_id=search_result.conversation_id,
++                                    reference_date=qa.metadata.get("question_date"),
++                                ),
++                                timeout=timeout_seconds
++                            )
+                         answer = answer.strip()
+                         break  # Success, exit retry loop
+                         
+@@ -215,6 +229,23 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and
+             
+             completed += 1
+             pbar.update(1)  # Update progress bar
++            trace_logger = get_trace_logger()
++            if trace_logger:
++                trace_logger.log_stage_timing(
++                    {
++                        "record_type": "stage_timing",
++                        "stage": "answer",
++                        "entity_type": "question",
++                        "conversation_id": search_result.conversation_id,
++                        "question_id": qa.question_id,
++                        "started_at": started_at,
++                        "ended_at": utc_now_iso(),
++                        "duration_sec": time.perf_counter() - started_perf,
++                        "status": "error" if str(answer).startswith("Error:") else "success",
++                        "context_chars": len(context),
++                        "answer_chars": len(answer or ""),
++                    }
++                )
+             
+             # Save checkpoint periodically
+             if checkpoint_manager and (completed % SAVE_INTERVAL == 0 or completed == total_qa_count):
+@@ -277,4 +308,3 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and
+             ))
+     
+     return results
+-
+diff --git a/evaluation/src/core/stages/search_stage.py b/evaluation/src/core/stages/search_stage.py
+index 84ed8b38be05442e571643c22218535c2ca16dd6..551eef04093e86cdd76afdf9b9d6f49434e59feb 100644
+--- a/evaluation/src/core/stages/search_stage.py
++++ b/evaluation/src/core/stages/search_stage.py
+@@ -2,6 +2,7 @@
+ Search stage - retrieve relevant memories.
+ """
+ import asyncio
++import time
+ from typing import List, Any, Optional
+ from logging import Logger
+ from tqdm import tqdm
+@@ -9,6 +10,7 @@ from tqdm import tqdm
+ from evaluation.src.core.data_models import QAPair, SearchResult
+ from evaluation.src.adapters.base import BaseAdapter
+ from evaluation.src.utils.checkpoint import CheckpointManager
++from evaluation.src.utils.perf_trace import get_trace_logger, trace_context, utc_now_iso
+ 
+ 
+ async def run_search_stage(
+@@ -87,6 +89,8 @@ async def run_search_stage(
+         async with semaphore:
+             conv_id = qa.metadata.get("conversation_id", "0")
+             conversation = conv_id_to_conv.get(conv_id)
++            started_at = utc_now_iso()
++            started_perf = time.perf_counter()
+             
+             # Search with timeout and retry (similar to answer_stage.py)
+             max_retries = 3
+@@ -95,10 +99,22 @@ async def run_search_stage(
+             
+             for attempt in range(max_retries):
+                 try:
+-                    result = await asyncio.wait_for(
+-                        adapter.search(qa.question, conv_id, index, conversation=conversation),
+-                        timeout=timeout_seconds
+-                    )
++                    with trace_context(
++                        stage="search",
++                        conversation_id=conv_id,
++                        question_id=qa.question_id,
++                        query=qa.question,
++                    ):
++                        result = await asyncio.wait_for(
++                            adapter.search(
++                                qa.question,
++                                conv_id,
++                                index,
++                                conversation=conversation,
++                                question_id=qa.question_id,
++                            ),
++                            timeout=timeout_seconds
++                        )
+                     break  # Success, exit retry loop
+                     
+                 except asyncio.TimeoutError:
+@@ -132,6 +148,28 @@ async def run_search_stage(
+                         )
+             
+             pbar.update(1)  # Update progress bar after each question
++            trace_logger = get_trace_logger()
++            if trace_logger:
++                trace_logger.log_stage_timing(
++                    {
++                        "record_type": "stage_timing",
++                        "stage": "search",
++                        "entity_type": "question",
++                        "conversation_id": conv_id,
++                        "question_id": qa.question_id,
++                        "started_at": started_at,
++                        "ended_at": utc_now_iso(),
++                        "duration_sec": time.perf_counter() - started_perf,
++                        "status": "error"
++                        if result.retrieval_metadata.get("error")
++                        else "success",
++                        "retrieval_latency_ms": result.retrieval_metadata.get(
++                            "total_latency_ms"
++                        ),
++                        "result_count": len(result.results),
++                        "error_message": result.retrieval_metadata.get("error"),
++                    }
++                )
+             return result
+     
+     # Process by conversation (use numeric sort for conversation IDs like "longmemeval_10")
+@@ -206,4 +244,3 @@ async def run_search_stage(
+     print(f"{'='*60}")
+     print(f"✅ Search completed: {len(all_results)} results\n")
+     return all_results
+-
+diff --git a/evaluation/src/evaluators/llm_judge.py b/evaluation/src/evaluators/llm_judge.py
+index 0cbeaa26d7b27380768b94477f309d5c4608ed08..621d8e09da91b361a0e3e3e100588647c7ac3d4a 100644
+--- a/evaluation/src/evaluators/llm_judge.py
++++ b/evaluation/src/evaluators/llm_judge.py
+@@ -9,6 +9,7 @@ Aligned with evaluation_archive logic:
+ 
+ import asyncio
+ import json
++import time
+ import numpy as np
+ from typing import List, Dict, Any
+ from collections import defaultdict
+@@ -19,6 +20,13 @@ from evaluation.src.evaluators.base import BaseEvaluator
+ from evaluation.src.evaluators.registry import register_evaluator
+ from evaluation.src.core.data_models import AnswerResult, EvaluationResult
+ from evaluation.src.utils.prompts import get_prompt, format_prompt
++from evaluation.src.utils.perf_trace import (
++    get_trace_context,
++    get_trace_logger,
++    new_call_id,
++    trace_context,
++    utc_now_iso,
++)
+ 
+ 
+ @register_evaluator("llm_judge")
+@@ -54,14 +62,33 @@ class LLMJudge(BaseEvaluator):
+         detailed_results = []
+ 
+         # Evaluate all answers concurrently
+-        semaphore = asyncio.Semaphore(10)  # Limit concurrency
++        eval_num_workers = int(self.config.get("num_workers", 2))
++        print(f"Evaluate concurrency: {eval_num_workers}")
++        semaphore = asyncio.Semaphore(eval_num_workers)
+ 
+         # Use tqdm progress bar
+         pbar = tqdm(total=len(answer_results), desc="⚖️  Evaluate Progress", unit="qa")
+ 
+         async def evaluate_single(answer_result: AnswerResult):
+             async with semaphore:
++                started_at = utc_now_iso()
++                started_perf = time.perf_counter()
+                 result = await self._evaluate_single_answer(answer_result)
++                trace_logger = get_trace_logger()
++                if trace_logger:
++                    trace_logger.log_stage_timing(
++                        {
++                            "record_type": "stage_timing",
++                            "stage": "evaluate",
++                            "entity_type": "question",
++                            "conversation_id": answer_result.conversation_id,
++                            "question_id": answer_result.question_id,
++                            "started_at": started_at,
++                            "ended_at": utc_now_iso(),
++                            "duration_sec": time.perf_counter() - started_perf,
++                            "status": "success",
++                        }
++                    )
+                 pbar.update(1)  # Update progress bar
+                 return result
+ 
+@@ -202,9 +229,15 @@ class LLMJudge(BaseEvaluator):
+         # Multiple evaluations, keep independent judgments
+         judgments = []
+         for _ in range(self.num_runs):
+-            is_correct = await self._judge_answer(
+-                question, golden_answer, generated_answer
+-            )
++            with trace_context(
++                stage="evaluate",
++                conversation_id=answer_result.conversation_id,
++                question_id=answer_result.question_id,
++                query=question,
++            ):
++                is_correct = await self._judge_answer(
++                    question, golden_answer, generated_answer
++                )
+             judgments.append(is_correct)
+ 
+         # Use judgment_1, judgment_2, ... format
+@@ -214,6 +247,7 @@ class LLMJudge(BaseEvaluator):
+ 
+         return {
+             "question_id": answer_result.question_id,
++            "conversation_id": answer_result.conversation_id,
+             "question": question,
+             "golden_answer": golden_answer,
+             "generated_answer": generated_answer,
+@@ -241,16 +275,58 @@ class LLMJudge(BaseEvaluator):
+         )
+ 
+         try:
+-            response = await self.client.chat.completions.create(
+-                model=self.model,
+-                messages=[
+-                    {"role": "system", "content": system_prompt},
+-                    {"role": "user", "content": user_prompt},
+-                ],
+-                temperature=0,
+-            )
++            call_id = new_call_id()
++            started_at = utc_now_iso()
++            started_perf = time.perf_counter()
++            with trace_context(stage="evaluate"):
++                response = await self.client.chat.completions.create(
++                    model=self.model,
++                    messages=[
++                        {"role": "system", "content": system_prompt},
++                        {"role": "user", "content": user_prompt},
++                    ],
++                    temperature=0,
++                )
+ 
+             content = response.choices[0].message.content
++            usage = getattr(response, "usage", None)
++            prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
++            completion_tokens = (
++                getattr(usage, "completion_tokens", 0) if usage else 0
++            )
++            total_tokens = getattr(usage, "total_tokens", 0) if usage else 0
++            trace_logger = get_trace_logger()
++            if trace_logger:
++                trace_logger.log_llm_call(
++                    {
++                        "record_type": "llm_call",
++                        "call_id": call_id,
++                        "provider": "openai",
++                        "model": self.model,
++                        "base_url": str(self.client.base_url),
++                        "stage": "evaluate",
++                        "status": "success",
++                        "retry_index": 0,
++                        "started_at": started_at,
++                        "ended_at": utc_now_iso(),
++                        "duration_sec": time.perf_counter() - started_perf,
++                        "prompt_tokens": prompt_tokens,
++                        "completion_tokens": completion_tokens,
++                        "total_tokens": total_tokens,
++                        "temperature": 0,
++                        "prompt_chars": len(system_prompt) + len(user_prompt),
++                        "response_chars": len(content or ""),
++                        "prompt": json.dumps(
++                            [
++                                {"role": "system", "content": system_prompt},
++                                {"role": "user", "content": user_prompt},
++                            ],
++                            ensure_ascii=False,
++                        ),
++                        "response": content,
++                        **get_trace_context(),
++                    }
++                )
+ 
+             # Debug: check if content is empty or None
+             if not content:
+@@ -278,6 +354,39 @@ class LLMJudge(BaseEvaluator):
+             print(f"     Raw response: {content[:200] if content else 'None'}...")
+             return False
+         except Exception as e:
++            trace_logger = get_trace_logger()
++            if trace_logger:
++                trace_logger.log_llm_call(
++                    {
++                        "record_type": "llm_call",
++                        "call_id": new_call_id(),
++                        "provider": "openai",
++                        "model": self.model,
++                        "base_url": str(self.client.base_url),
++                        "stage": "evaluate",
++                        "status": "error",
++                        "retry_index": 0,
++                        "started_at": utc_now_iso(),
++                        "ended_at": utc_now_iso(),
++                        "duration_sec": 0.0,
++                        "prompt_tokens": 0,
++                        "completion_tokens": 0,
++                        "total_tokens": 0,
++                        "prompt_chars": len(system_prompt) + len(user_prompt),
++                        "response_chars": 0,
++                        "prompt": json.dumps(
++                            [
++                                {"role": "system", "content": system_prompt},
++                                {"role": "user", "content": user_prompt},
++                            ],
++                            ensure_ascii=False,
++                        ),
++                        "response": None,
++                        "error_type": type(e).__name__,
++                        "error_message": str(e),
++                        **get_trace_context(),
++                    }
++                )
+             print(f"  ⚠️ LLM Judge failed: {type(e).__name__}: {e}")
+             return False
+ 
+diff --git a/src/agentic_layer/vectorize_vllm.py b/src/agentic_layer/vectorize_vllm.py
+index d67f64d8d4d8170b8a5e24632d1439f420f74912..5ae28999f93421374e6ce7de9cc0d06e3922f0d4 100644
+--- a/src/agentic_layer/vectorize_vllm.py
++++ b/src/agentic_layer/vectorize_vllm.py
+@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
+ class VllmVectorizeConfig:
+     """Configuration for vLLM self-deployed vectorization service"""
+ 
+-    base_url: str = "http://localhost:8000/v1"
++    base_url: str = "http://localhost:8002/v1"
+     api_key: str = "EMPTY"  # Many self-deployed services don't require API key
+     model: str = "Qwen/Qwen3-Embedding-4B"
+     timeout: int = 30
+@@ -55,4 +55,3 @@ class VllmVectorizeService(BaseVectorizeService):
+     def _should_truncate_client_side(self) -> bool:
+         """vLLM services need client-side truncation"""
+         return True
+-
+diff --git a/src/core/component/llm/tokenizer/tokenizer_factory.py b/src/core/component/llm/tokenizer/tokenizer_factory.py
+index 1f81231dc812060df8a64b3557f4017e408252f4..c90943c0f76b847727d4469db640d7ca10fcbbba 100644
+--- a/src/core/component/llm/tokenizer/tokenizer_factory.py
++++ b/src/core/component/llm/tokenizer/tokenizer_factory.py
+@@ -14,6 +14,17 @@ from core.observation.logger import get_logger
+ logger = get_logger(__name__)
+ 
+ 
++class _SimpleEncoding:
++    """Offline fallback when tiktoken encoding files are unavailable."""
++
++    @staticmethod
++    def encode(text: str) -> list[int]:
++        if not text:
++            return []
++        # Deterministic coarse token approximation for local/offline runs.
++        return [i for i, _ in enumerate(text.split(), start=1)]
++
++
+ # Default tiktoken encodings to preload during application startup
+ DEFAULT_TIKTOKEN_ENCODINGS = [
+     "o200k_base",   # GPT-4o, GPT-4o-mini
+@@ -53,7 +64,15 @@ class TokenizerFactory:
+         
+         if cache_key not in self._tokenizers:
+             logger.debug("Loading tiktoken encoding: %s", encoding_name)
+-            self._tokenizers[cache_key] = tiktoken.get_encoding(encoding_name)
++            try:
++                self._tokenizers[cache_key] = tiktoken.get_encoding(encoding_name)
++            except Exception as e:
++                logger.warning(
++                    "Failed to load tiktoken encoding '%s', using simple fallback tokenizer: %s",
++                    encoding_name,
++                    e,
++                )
++                self._tokenizers[cache_key] = _SimpleEncoding()
+             logger.debug("Tiktoken encoding '%s' loaded and cached", encoding_name)
+         
+         return self._tokenizers[cache_key]
+diff --git a/src/memory_layer/llm/openai_provider.py b/src/memory_layer/llm/openai_provider.py
+index e1bce60c2715818eb37c41af1fbd1925a23e9e92..baae5f721751d85fb0ace856f80c4dd3a46d7e3f 100644
+--- a/src/memory_layer/llm/openai_provider.py
++++ b/src/memory_layer/llm/openai_provider.py
+@@ -18,6 +18,12 @@ import random
+ 
+ from memory_layer.llm.protocol import LLMProvider, LLMError
+ from core.observation.logger import get_logger
++from evaluation.src.utils.perf_trace import (
++    get_trace_context,
++    get_trace_logger,
++    new_call_id,
++    utc_now_iso,
++)
+ 
+ logger = get_logger(__name__)
+ 
+@@ -95,14 +101,16 @@ class OpenAIProvider(LLMProvider):
+             openrouter_provider = {"order": provider_list, "allow_fallbacks": False}
+         else:
+             openrouter_provider = None
+-        # Prepare request data
++        # Prepare request data.
++        # Only include OpenRouter-specific `provider` routing when explicitly configured.
+         data = {
+             "model": self.model,
+             "messages": [{"role": "user", "content": prompt}],
+             "temperature": temperature if temperature is not None else self.temperature,
+-            "provider": openrouter_provider,
+             "response_format": response_format,
+         }
++        if openrouter_provider is not None:
++            data["provider"] = openrouter_provider
+         # print(data)
+         # print(data["extra_body"])
+         # Add max_tokens if specified
+@@ -118,6 +126,8 @@ class OpenAIProvider(LLMProvider):
+         }
+         max_retries = 5
+         for retry_num in range(max_retries):
++            call_id = new_call_id()
++            started_at = utc_now_iso()
+             try:
+                 timeout = aiohttp.ClientTimeout(total=600)
+                 async with aiohttp.ClientSession(timeout=timeout) as session:
+@@ -201,6 +211,37 @@ class OpenAIProvider(LLMProvider):
+                                 'timestamp': time.time(),
+                             }
+ 
++                        trace_logger = get_trace_logger()
++                        if trace_logger:
++                            trace_logger.log_llm_call(
++                                {
++                                    "record_type": "llm_call",
++                                    "call_id": call_id,
++                                    "provider": "openai",
++                                    "model": self.model,
++                                    "base_url": self.base_url,
++                                    "status": "success",
++                                    "retry_index": retry_num,
++                                    "started_at": started_at,
++                                    "ended_at": utc_now_iso(),
++                                    "duration_sec": end_time - start_time,
++                                    "prompt_tokens": prompt_tokens,
++                                    "completion_tokens": completion_tokens,
++                                    "total_tokens": total_tokens,
++                                    "finish_reason": finish_reason,
++                                    "temperature": data.get("temperature"),
++                                    "max_tokens": data.get("max_tokens"),
++                                    "prompt_chars": len(prompt),
++                                    "response_chars": len(
++                                        response_data['choices'][0]['message']['content']
++                                    ),
++                                    "prompt": prompt,
++                                    "response": response_data['choices'][0]['message']['content'],
++                                    "request_payload": data,
++                                    **get_trace_context(),
++                                }
++                            )
++
+                         return response_data['choices'][0]['message']['content']
+ 
+             except aiohttp.ClientError as e:
+@@ -210,6 +251,30 @@ class OpenAIProvider(LLMProvider):
+                 logger.error(f"   ⏱️  Duration: {error_time - start_time:.2f}s")
+                 logger.error(f"   💬 Error message: {str(e)}")
+                 logger.error(f"retry_num: {retry_num}")
++                trace_logger = get_trace_logger()
++                if trace_logger:
++                    trace_logger.log_llm_call(
++                        {
++                            "record_type": "llm_call",
++                            "call_id": call_id,
++                            "provider": "openai",
++                            "model": self.model,
++                            "base_url": self.base_url,
++                            "status": "error",
++                            "retry_index": retry_num,
++                            "started_at": started_at,
++                            "ended_at": utc_now_iso(),
++                            "duration_sec": error_time - start_time,
++                            "prompt_chars": len(prompt),
++                            "response_chars": 0,
++                            "prompt": prompt,
++                            "response": None,
++                            "request_payload": data,
++                            "error_type": type(e).__name__,
++                            "error_message": str(e),
++                            **get_trace_context(),
++                        }
++                    )
+                 # raise LLMError(f"Request failed: {str(e)}")
+                 if retry_num == max_retries - 1:
+                     raise LLMError(f"Request failed: {str(e)}")
+@@ -219,6 +284,30 @@ class OpenAIProvider(LLMProvider):
+                 logger.error(f"   ⏱️  Duration: {error_time - start_time:.2f}s")
+                 logger.error(f"   💬 Error message: {str(e)}")
+                 logger.error(f"retry_num: {retry_num}")
++                trace_logger = get_trace_logger()
++                if trace_logger:
++                    trace_logger.log_llm_call(
++                        {
++                            "record_type": "llm_call",
++                            "call_id": call_id,
++                            "provider": "openai",
++                            "model": self.model,
++                            "base_url": self.base_url,
++                            "status": "error",
++                            "retry_index": retry_num,
++                            "started_at": started_at,
++                            "ended_at": utc_now_iso(),
++                            "duration_sec": error_time - start_time,
++                            "prompt_chars": len(prompt),
++                            "response_chars": 0,
++                            "prompt": prompt,
++                            "response": None,
++                            "request_payload": data,
++                            "error_type": type(e).__name__,
++                            "error_message": str(e),
++                            **get_trace_context(),
++                        }
++                    )
+                 if retry_num == max_retries - 1:
+                     raise LLMError(f"Request failed: {str(e)}")
+ 
+diff --git a/src/memory_layer/memcell_extractor/conv_memcell_extractor.py b/src/memory_layer/memcell_extractor/conv_memcell_extractor.py
+index ee386f3a5ec2aad39521a792f8b51ecc5579fdcd..cc6449de27185252fc12d80c6ef777e7f1700675 100644
+--- a/src/memory_layer/memcell_extractor/conv_memcell_extractor.py
++++ b/src/memory_layer/memcell_extractor/conv_memcell_extractor.py
+@@ -126,7 +126,7 @@ class ConvMemCellExtractor(MemCellExtractor):
+                 text = f"{speaker}: {content}" if speaker else content
+             else:
+                 text = str(msg)
+-            total += len(tokenizer.encode(text))
++            total += len(tokenizer.encode(text, disallowed_special=()))
+         return total
+ 
+     def _extract_participant_ids(
+diff --git a/src/memory_layer/memory_extractor/episode_memory_extractor.py b/src/memory_layer/memory_extractor/episode_memory_extractor.py
+index 1409eb116336f25b94f71fa655bc251559d37d1f..83d73bcdd39d0e6a2f9fd7cdb17298c225502ad1 100644
+--- a/src/memory_layer/memory_extractor/episode_memory_extractor.py
++++ b/src/memory_layer/memory_extractor/episode_memory_extractor.py
+@@ -188,6 +188,107 @@ class EpisodeMemoryExtractor(MemoryExtractor):
+                             participant_name_map[refer_item['_id']] = refer_item['name']
+         return participant_name_map
+ 
++    def _extract_json_payload(self, response: str) -> str:
++        """Extract the most likely JSON payload from an LLM response."""
++        if '```json' in response:
++            start = response.find('```json') + 7
++            end = response.find('```', start)
++            if end > start:
++                return response[start:end].strip()
++
++        if '```' in response:
++            start = response.find('```') + 3
++            newline = response.find('\n', start)
++            if newline != -1:
++                prefix = response[start:newline].strip()
++                if prefix.isalpha():
++                    start = newline + 1
++            end = response.find('```', start)
++            if end > start:
++                return response[start:end].strip()
++
++        json_start = response.find('{')
++        json_end = response.rfind('}')
++        if json_start != -1 and json_end > json_start:
++            return response[json_start : json_end + 1].strip()
++
++        return response.strip()
++
++    def _parse_episode_response(self, response: str) -> Dict[str, Any]:
++        """Parse episode JSON with fallback for common LLM escaping mistakes."""
++        payload = self._extract_json_payload(response)
++        try:
++            return json.loads(payload)
++        except json.JSONDecodeError:
++            pass
++
++        try:
++            return json.loads(payload, strict=False)
++        except json.JSONDecodeError:
++            pass
++
++        # Some local models emit unescaped backslashes, e.g. "\s". Treat them
++        # as literal backslashes while preserving valid JSON escapes.
++        sanitized = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', payload)
++        try:
++            return json.loads(sanitized, strict=False)
++        except json.JSONDecodeError:
++            pass
++
++        json_match = re.search(
++            r'\{.*"title"\s*:.*"content"\s*:.*\}', response, re.DOTALL
++        )
++        if json_match:
++            sanitized = re.sub(
++                r'\\(?!["\\/bfnrtu])', r'\\\\', json_match.group()
++            )
++            try:
++                return json.loads(sanitized, strict=False)
++            except json.JSONDecodeError:
++                pass
++
++        field_data = self._parse_episode_fields_lenient(payload)
++        if field_data:
++            return field_data
++
++        raise ValueError("Unable to parse episode JSON response")
++
++    def _parse_episode_fields_lenient(self, payload: str) -> Dict[str, Any] | None:
++        """
++        Extract episode fields from otherwise JSON-shaped output when quoted text
++        inside values is not escaped, e.g. Excel formulas containing "MM/DD/YYYY".
++        """
++
++        def extract_string_field(field: str, terminators: List[str]) -> str | None:
++            key_match = re.search(rf'"{field}"\s*:\s*"', payload)
++            if not key_match:
++                return None
++            start = key_match.end()
++            end_candidates = []
++            for terminator in terminators:
++                idx = payload.find(terminator, start)
++                if idx != -1:
++                    end_candidates.append(idx)
++            if not end_candidates:
++                return None
++            end = min(end_candidates)
++            value = payload[start:end]
++            return value.replace('\\"', '"').replace('\\\\', '\\').strip()
++
++        title = extract_string_field("title", ['",\n', '"\n'])
++        content = extract_string_field(
++            "content", ['",\n    "summary"', '",\n  "summary"', '"\n}', '"\r\n}']
++        )
++        summary = extract_string_field("summary", ['"\n}', '"\r\n}'])
++
++        if title and content:
++            data: Dict[str, Any] = {"title": title, "content": content}
++            if summary:
++                data["summary"] = summary
++            return data
++
++        return None
++
+     async def _extract_episode(
+         self, request: EpisodeMemoryExtractRequest, use_group_prompt: bool = False
+     ) -> Optional[EpisodeMemory]:
+@@ -265,24 +366,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
+             try:
+                 prompt = prompt_template.format(**format_params)
+                 response = await self.llm_provider.generate(prompt)
+-
+-                # Parse JSON
+-                if '```json' in response:
+-                    start = response.find('```json') + 7
+-                    end = response.find('```', start)
+-                    if end > start:
+-                        json_str = response[start:end].strip()
+-                        data = json.loads(json_str)
+-                    else:
+-                        data = json.loads(response)
+-                else:
+-                    json_match = re.search(
+-                        r'\{[^{}]*"title"[^{}]*"content"[^{}]*\}', response, re.DOTALL
+-                    )
+-                    if json_match:
+-                        data = json.loads(json_match.group())
+-                    else:
+-                        data = json.loads(response)
++                data = self._parse_episode_response(response)
+ 
+                 # Validate required fields: title and content must exist
+                 if "title" not in data or not data["title"]:
+diff --git a/src/memory_layer/memory_extractor/event_log_extractor.py b/src/memory_layer/memory_extractor/event_log_extractor.py
+index 3547f732064248882babaa46bbf4159f4ee2d2b7..040799c71b48dda3a880896500b07c427ee8eccf 100644
+--- a/src/memory_layer/memory_extractor/event_log_extractor.py
++++ b/src/memory_layer/memory_extractor/event_log_extractor.py
+@@ -89,6 +89,72 @@ class EventLogExtractor:
+         time_of_day = dt.strftime("%I:%M %p")  # 2:00 PM
+         return f"{month_day_year}({weekday}) at {time_of_day}"
+ 
++    def _extract_json_payload(self, response: str) -> str:
++        """Extract the most likely JSON payload from an LLM response."""
++        if '```json' in response:
++            start = response.find('```json') + 7
++            end = response.find('```', start)
++            if end > start:
++                return response[start:end].strip()
++
++        if '```' in response:
++            start = response.find('```') + 3
++            if response[start : start + 10].strip().split()[0].isalpha():
++                start = response.find('\n', start) + 1
++            end = response.find('```', start)
++            if end > start:
++                return response[start:end].strip()
++
++        return response.strip()
++
++    def _parse_event_log_lenient(self, response: str) -> Dict[str, Any]:
++        """
++        Best-effort parser for event_log JSON when an LLM leaves inner quotes
++        unescaped inside atomic_fact strings, e.g. a "super-nerd" phrase.
++        """
++        payload = self._extract_json_payload(response)
++
++        time_match = re.search(r'"time"\s*:\s*"((?:\\.|[^"\\])*)"', payload, re.DOTALL)
++        facts_key = re.search(r'"atomic_fact"\s*:\s*\[', payload)
++        if not time_match or not facts_key:
++            raise ValueError("Missing event_log.time or event_log.atomic_fact")
++
++        facts_start = facts_key.end()
++        depth = 1
++        facts_end = -1
++        for idx in range(facts_start, len(payload)):
++            ch = payload[idx]
++            if ch == '[':
++                depth += 1
++            elif ch == ']':
++                depth -= 1
++                if depth == 0:
++                    facts_end = idx
++                    break
++
++        if facts_end <= facts_start:
++            raise ValueError("Unable to locate atomic_fact list end")
++
++        facts_blob = payload[facts_start:facts_end]
++        facts: List[str] = []
++        for line in facts_blob.splitlines():
++            item = line.strip().rstrip(',')
++            if not item:
++                continue
++            if item.startswith('"') and item.endswith('"'):
++                item = item[1:-1]
++            else:
++                continue
++            item = item.replace('\\"', '"').replace('\\\\', '\\').strip()
++            if item:
++                facts.append(item)
++
++        if not facts:
++            raise ValueError("No atomic facts parsed")
++
++        time_value = time_match.group(1).replace('\\"', '"').replace('\\\\', '\\')
++        return {"event_log": {"time": time_value, "atomic_fact": facts}}
++
+     def _parse_llm_response(self, response: str) -> Dict[str, Any]:
+         """
+         Parse JSON response returned by LLM
+@@ -146,7 +212,14 @@ class EventLogExtractor:
+         except json.JSONDecodeError:
+             pass
+ 
+-        # 5. If all fail, raise exception
++        # 5. Lenient event_log parser for otherwise valid model output with
++        # unescaped quotation marks inside atomic_fact strings.
++        try:
++            return self._parse_event_log_lenient(response)
++        except ValueError:
++            pass
++
++        # 6. If all fail, raise exception
+         logger.error(f"Unable to parse LLM response: {response[:200]}...")
+         raise ValueError(f"Unable to parse LLM response into valid JSON format")
+ 
+@@ -204,9 +277,20 @@ class EventLogExtractor:
+                 f"atomic_fact is not a list: {type(event_log_data['atomic_fact'])}"
+             )
+ 
+-        # Validate atomic_fact is not empty
++        event_log_data["atomic_fact"] = [
++            str(fact).strip()
++            for fact in event_log_data["atomic_fact"]
++            if str(fact).strip()
++        ]
++
++        # Some local models occasionally return an empty fact list for a valid
++        # episode. Keep the episode searchable instead of failing the whole
++        # conversation.
+         if len(event_log_data["atomic_fact"]) == 0:
+-            raise ValueError("atomic_fact list is empty")
++            fallback_fact = str(input_text).strip()
++            if not fallback_fact:
++                raise ValueError("atomic_fact list is empty")
++            event_log_data["atomic_fact"] = [fallback_fact[:2000]]
+ 
+         # 6. Batch generate embedding for all atomic_fact (performance optimization)
+         from agentic_layer.vectorize_service import get_vectorize_service
+diff --git a/tests/test_integration_vectorize_rerank.py b/tests/test_integration_vectorize_rerank.py
+index f04cebb5fc733368f764fe242678179a45bce656..910237be5bcb15492ae66f49d9c8d400fd075694 100644
+--- a/tests/test_integration_vectorize_rerank.py
++++ b/tests/test_integration_vectorize_rerank.py
+@@ -454,7 +454,7 @@ async def test_compare_vllm_deepinfra_embedding():
+         # Create vLLM service
+         vllm_config = VllmVectorizeConfig(
+             api_key=os.getenv("VECTORIZE_API_KEY", "EMPTY"),
+-            base_url=os.getenv("VECTORIZE_BASE_URL", "http://localhost:8000/v1"),
++            base_url=os.getenv("VECTORIZE_BASE_URL", "http://localhost:8002/v1"),
+             model=os.getenv("VECTORIZE_MODEL", "Qwen/Qwen3-Embedding-4B"),
+             dimensions=int(os.getenv("VECTORIZE_DIMENSIONS", "1024")),
+         )
+@@ -964,4 +964,3 @@ async def main():
+ if __name__ == "__main__":
+     exit_code = asyncio.run(main())
+     sys.exit(exit_code)
+-

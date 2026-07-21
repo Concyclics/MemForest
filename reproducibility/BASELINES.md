@@ -12,6 +12,11 @@ shared-answer prompt is reported only as a sensitivity diagnostic.
 
 The exact upstream repositories and commits are recorded in
 [`manifests/baseline_versions.json`](manifests/baseline_versions.json).
+The complete implementation package is indexed from
+[`baselines/README.md`](baselines/README.md). For each method, we publish the
+code overlay relative to the pinned upstream commit, portable runners, actual
+configs, and the upstream license rather than vendoring a mutable third-party
+checkout.
 
 ## Mem0 corrected rerun
 
@@ -56,6 +61,8 @@ For score reconciliation, note that published EverMemOS tables use a different
 answer-model/protocol setting. We therefore report local controlled results and
 published results as different configurations, not as exact reproductions of
 one another.
+The exact evaluation overlay, six model--dataset configs, preparation script,
+and runner are under [`baselines/evermemos/`](baselines/evermemos/).
 
 ## LightMem, MemoryOS, and MemPalace
 
@@ -65,6 +72,15 @@ base commits are pinned in the manifest. The audit did not find the Mem0-style
 runtime-date substitution in these methods. Method-specific retrieved objects
 remain in their native schemas; `k=10` means the final ten retrieved memory
 units, which can differ in granularity from ten MemForest facts.
+
+The exact code is released separately for audit and execution:
+
+- LightMem: [`baselines/lightmem/`](baselines/lightmem/), including its
+  LongMemEval and LoCoMo entry points;
+- MemoryOS: [`baselines/memoryos/`](baselines/memoryos/), including the
+  isolated-store LongMemEval runner and sharded LoCoMo runner;
+- MemPalace: [`baselines/mempalace/`](baselines/mempalace/), including native
+  retrieval plus schema-aware answer generation for both benchmarks.
 
 ## Zep Local
 
@@ -97,6 +113,13 @@ as an equal-fact-budget representation test. Results for all three backbones
 and both benchmarks are under [`results/zep_local/`](results/zep_local/).
 The resumable runner and aggregator are under
 [`baselines/zep_local/`](baselines/zep_local/).
+
+## Shared answer judging
+
+The frozen DeepSeek judge implementation is released under
+[`evaluation/`](evaluation/). Baseline runners produce method-native retrieved
+contexts and answers; judging is performed afterward so changes to a memory
+implementation cannot silently change the evaluation prompt.
 
 ## Graphiti controlled representation diagnostic
 

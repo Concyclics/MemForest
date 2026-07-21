@@ -8,8 +8,9 @@ repository rather than to a separate anonymized archive.
 
 - [`BASELINES.md`](BASELINES.md): pinned upstream versions, local deployment
   boundaries, timestamp policy, retrieval budget, and reproduction procedure.
-- [`baselines/`](baselines/): corrected Mem0 adapter/reference-date patch and
-  the resumable Zep Local Graphiti/Neo4j runner.
+- [`baselines/`](baselines/): pinned code overlays, configs, licenses, and
+  portable runners for every main/revision baseline.
+- [`evaluation/`](evaluation/): the frozen shared DeepSeek judge implementation.
 - [`PROTOCOL.md`](PROTOCOL.md): datasets, model roles, answer generation, judge,
   pass@k, and reporting policy.
 - [`RESULTS.md`](RESULTS.md): revision headline results and interpretation.
@@ -35,6 +36,11 @@ The check is API-free. It verifies expected question counts, judge-error counts,
 and the headline values cited by the response. Re-running answer generation or
 LLM judging requires the external baseline repositories and model services
 listed in [`BASELINES.md`](BASELINES.md).
+
+Every baseline implementation is indexed in
+[`baselines/README.md`](baselines/README.md). We publish complete patches
+relative to pinned upstream commits instead of mutable copies of third-party
+repositories.
 
 ## Data policy
 

@@ -1,0 +1,21 @@
+# LoCoMo full-category dataset configuration
+
+name: "locomo_all"
+version: "1.0"
+description: "LoCoMo benchmark with all categories enabled"
+
+memory_language: "en"
+
+data:
+  path: "locomo/locomo10.json"
+  format: "locomo"
+
+evaluation:
+  type: "llm_judge"
+  llm:
+    provider: "openai"
+    model: "${EVAL_LLM_MODEL:gpt-4o-mini}"
+    api_key: "${EVAL_LLM_API_KEY:${LLM_API_KEY}}"
+    base_url: "${EVAL_LLM_BASE_URL:${LLM_BASE_URL:https://openrouter.ai/api/v1}}"
+  num_runs: 3
+  num_workers: ${EVAL_NUM_WORKERS:8}

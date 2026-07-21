@@ -1,0 +1,26 @@
+name: "evermemos_locomo_gemma_8001"
+version: "1.0"
+description: "EverMemOS on LoCoMo using local Gemma on port 8001 and Qwen3 embedding on port 8003"
+
+adapter: "evermemos"
+
+llm:
+  provider: "openai"
+  model: "google/gemma-4-12B-it"
+  api_key: "EMPTY"
+  base_url: "${EVAL_LLM_BASE_URL:http://127.0.0.1:8001/v1}"
+  temperature: 0.3
+  max_tokens: 8192
+
+add:
+  num_workers: 10
+  event_log_num_workers: 10
+
+search:
+  mode: "agentic"
+  use_hybrid_search: true
+  response_top_k: 10
+  num_workers: 128
+
+answer:
+  num_workers: 128

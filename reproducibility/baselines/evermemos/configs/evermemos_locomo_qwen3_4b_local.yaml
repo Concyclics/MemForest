@@ -1,0 +1,22 @@
+name: "evermemos_locomo_qwen3_4b_local"
+version: "1.0"
+description: "EverMemOS on LoCoMo using local Qwen3-4B"
+
+adapter: "evermemos"
+
+llm:
+  provider: "openai"
+  model: "Qwen/Qwen3-4B-Instruct-2507-FP8"
+  api_key: "EMPTY"
+  base_url: "${EVAL_LLM_BASE_URL:http://localhost:8004/v1}"
+  temperature: 0.3
+  max_tokens: 8192
+
+add:
+  num_workers: 8
+  event_log_num_workers: 64
+
+search:
+  mode: "agentic"
+  use_hybrid_search: true
+  response_top_k: 10

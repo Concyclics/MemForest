@@ -43,6 +43,8 @@ The revision uses `deepseek-chat` with the appendix prompts and temperature 0.
 Judge output is parsed as `CORRECT` or `WRONG`; failures are retained and must
 be zero before a complete result is reported. Prompt text and hashes are stored
 beside the corresponding result files.
+The executable judge is released at
+[`evaluation/unified_deepseek_judge.py`](evaluation/unified_deepseek_judge.py).
 
 Primary tables report one answer per question with three judge calls and the
 mean accuracy across judge repetitions. The corrected 30B run has repetition

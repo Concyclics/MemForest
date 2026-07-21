@@ -80,7 +80,27 @@ def check_judge_sensitivity() -> None:
     assert manifest["validation"]["judge_errors"] == 0
 
 
+def check_baseline_implementations() -> None:
+    manifest = read_json(ROOT / "manifests" / "baseline_versions.json")
+    expected = {
+        "evermemos": ["upstream.patch", "scripts/prepare.sh", "scripts/run.sh"],
+        "mem0": ["mem0_adapter.py", "mem0_local_qwen3.yaml"],
+        "lightmem": ["upstream.patch", "scripts/run_longmemeval.sh", "scripts/run_locomo.sh"],
+        "memoryos": ["upstream.patch", "scripts/run_longmemeval.py", "scripts/run_locomo_shards.sh"],
+        "mempalace": ["upstream.patch", "scripts/run_longmemeval.sh", "scripts/run_locomo.sh"],
+        "memorydata_zep_local": ["run_benchmark.py", "summarize_run.py"],
+    }
+    for method, relative_files in expected.items():
+        artifact_path = manifest[method]["artifact_path"]
+        baseline_root = ROOT / Path(artifact_path).relative_to("reproducibility")
+        assert baseline_root.is_dir(), (method, baseline_root)
+        for relative_file in relative_files:
+            path = baseline_root / relative_file
+            assert path.is_file() and path.stat().st_size > 0, (method, path)
+
+
 def main() -> None:
+    check_baseline_implementations()
     check_mem0()
     check_gemma()
     check_zep()

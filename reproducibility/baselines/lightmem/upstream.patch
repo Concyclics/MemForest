@@ -1,0 +1,350 @@
+diff --git a/experiments/locomo/add_locomo.py b/experiments/locomo/add_locomo.py
+index 686fc24a9ae2d2c38c07e193f2983894311e40f5..89e9d9fbdfada981ceda4bc6f03b293079a611bc 100644
+--- a/experiments/locomo/add_locomo.py
++++ b/experiments/locomo/add_locomo.py
+@@ -66,6 +66,11 @@ def parse_args():
+     parser.add_argument('--llm-model', type=str, default=LLM_MODEL)
+     parser.add_argument('--llmlingua-model-path', type=str, default=LLMLINGUA_MODEL_PATH)
+     parser.add_argument('--embedding-model-path', type=str, default=EMBEDDING_MODEL_PATH)
++    parser.add_argument('--embedding-provider', type=str, default='huggingface',
++                       choices=['huggingface', 'openai'])
++    parser.add_argument('--embedding-api-base-url', type=str, default=os.getenv("EMBED_BASE_URL", ""))
++    parser.add_argument('--embedding-api-key', type=str, default=os.getenv("EMBED_API_KEY", "EMPTY"))
++    parser.add_argument('--embedding-dims', type=int, default=int(os.getenv("EMBED_DIM", "384")))
+     parser.add_argument('--limit-samples', type=int, default=0)
+     parser.add_argument('--skip-samples', type=int, default=0)
+     
+@@ -161,6 +166,19 @@ def extract_locomo_sessions(conversation_dict):
+ def load_lightmem(collection_name, api_key, args, base_dir=None):
+     if base_dir is None:
+         base_dir = QDRANT_POST_UPDATE_DIR
++    if args.embedding_provider == "openai":
++        text_embedder_configs = {
++            "model": args.embedding_model_path,
++            "api_key": args.embedding_api_key,
++            "openai_base_url": args.embedding_api_base_url,
++            "embedding_dims": args.embedding_dims,
++        }
++    else:
++        text_embedder_configs = {
++            "model": args.embedding_model_path,
++            "embedding_dims": args.embedding_dims,
++            "model_kwargs": {"device": "cuda"},
++        }
+     config = {
+         "pre_compress": True,
+         "pre_compressor": {
+@@ -198,19 +216,15 @@ def load_lightmem(collection_name, api_key, args, base_dir=None):
+         "extract_threshold": 0.1,
+         "index_strategy": "embedding",
+         "text_embedder": {
+-            "model_name": "huggingface",
+-            "configs": {
+-                "model": args.embedding_model_path,
+-                "embedding_dims": 384,
+-                "model_kwargs": {"device": "cuda"},
+-            },
++            "model_name": args.embedding_provider,
++            "configs": text_embedder_configs,
+         },
+         "retrieve_strategy": "embedding",
+         "embedding_retriever": {
+             "model_name": "qdrant",
+             "configs": { 
+                 "collection_name": collection_name,
+-                "embedding_model_dims": 384,
++                "embedding_model_dims": args.embedding_dims,
+                 "path": f'{base_dir}/{collection_name}',
+                 "on_disk": True,
+             },
+@@ -219,7 +233,7 @@ def load_lightmem(collection_name, api_key, args, base_dir=None):
+             "model_name": "qdrant",
+             "configs": { 
+                 "collection_name": f"{collection_name}_summary",
+-                "embedding_model_dims": 384,
++                "embedding_model_dims": args.embedding_dims,
+                 "path": f'{base_dir}/{collection_name}_summary',
+                 "on_disk": True,
+             }
+diff --git a/experiments/locomo/retrievers.py b/experiments/locomo/retrievers.py
+index 4db858b686d2fe4e187633cb5ce92f5ea71dcb87..0c3fbbc3b43c9f0098b32ec27ee11066d63ed483 100644
+--- a/experiments/locomo/retrievers.py
++++ b/experiments/locomo/retrievers.py
+@@ -20,14 +20,20 @@ from lightmem.configs.retriever.embeddingretriever.qdrant import QdrantConfig
+ logger = logging.getLogger(__name__)
+ 
+ class QdrantEntryLoader:
+-    def __init__(self, qdrant_path: str, summary_suffix: str = "_summaries"):
++    def __init__(self, qdrant_path: str, summary_suffix: str = "_summaries", embedding_dims: int = 384):
+         self.qdrant_path = qdrant_path
+         self.summary_suffix = summary_suffix
++        self.embedding_dims = embedding_dims
+ 
+     def _get_qdrant(self, collection_name: str):
+         if Qdrant is None or QdrantConfig is None:
+             return None
+-        cfg = QdrantConfig(collection_name=collection_name, path=self.qdrant_path, embedding_model_dims=384, on_disk=True)
++        cfg = QdrantConfig(
++            collection_name=collection_name,
++            path=self.qdrant_path,
++            embedding_model_dims=self.embedding_dims,
++            on_disk=True,
++        )
+         return Qdrant(cfg)
+ 
+     def _load_from_collection(self, collection_name: str, with_vectors: bool = False) -> List[Dict[str, Any]]:
+diff --git a/experiments/locomo/search_locomo.py b/experiments/locomo/search_locomo.py
+index 92d61aeb0e834d99db0df8452fbcb02e7b114759..91227a7cc8ea502d8a61d4248e212b1640ca3016 100644
+--- a/experiments/locomo/search_locomo.py
++++ b/experiments/locomo/search_locomo.py
+@@ -585,6 +585,12 @@ def main():
+     parser.add_argument('--embedding-model-path', type=str, 
+                        default=DEFAULT_EMBEDDING_MODEL_PATH,
+                        help="Path to embedding model (for huggingface backend)")
++    parser.add_argument('--embedding-api-base-url', type=str, default=os.getenv("EMBED_BASE_URL", ""),
++                       help="Base URL for OpenAI-compatible embedding backend")
++    parser.add_argument('--embedding-api-key', type=str, default=os.getenv("EMBED_API_KEY", "EMPTY"),
++                       help="API key for OpenAI-compatible embedding backend")
++    parser.add_argument('--embedding-dims', type=int, default=int(os.getenv("EMBED_DIM", "384")),
++                       help="Embedding vector dimension")
+     
+     # Summary configuration
+     parser.add_argument('--enable-summary', action='store_true',
+@@ -638,23 +644,27 @@ def main():
+     
+     # Initialize entry loader with summary support if enabled
+     if args.enable_summary:
+-        entry_loader = QdrantEntryLoader(args.qdrant_dir, summary_suffix="_summary")
++        entry_loader = QdrantEntryLoader(
++            args.qdrant_dir,
++            summary_suffix="_summary",
++            embedding_dims=args.embedding_dims,
++        )
+     else:
+-        entry_loader = QdrantEntryLoader(args.qdrant_dir)
++        entry_loader = QdrantEntryLoader(args.qdrant_dir, embedding_dims=args.embedding_dims)
+     
+     # Initialize embedding model
+     if args.embedder == 'openai':
+         embedder_cfg = BaseTextEmbedderConfig(
+-            model='text-embedding-3-small',
+-            api_key=args.llm_api_key,
+-            openai_base_url=args.llm_base_url,
+-            embedding_dims=1536,
++            model=args.embedding_model_path,
++            api_key=args.embedding_api_key,
++            openai_base_url=args.embedding_api_base_url,
++            embedding_dims=args.embedding_dims,
+         )
+         embedder = TextEmbedderOpenAI(embedder_cfg)
+     else:
+         embedder_cfg = BaseTextEmbedderConfig(
+             model=args.embedding_model_path,
+-            embedding_dims=384,
++            embedding_dims=args.embedding_dims,
+             model_kwargs={"device": "cuda"},
+         )
+         embedder = TextEmbedderHuggingface(embedder_cfg)
+diff --git a/experiments/longmemeval/run_lightmem_qwen.py b/experiments/longmemeval/run_lightmem_qwen.py
+index c9ca4f30074ac4a991d80387fb7a268303d913ec..045cd6f2474ed060a3c8dff60be32fec0692d8da 100644
+--- a/experiments/longmemeval/run_lightmem_qwen.py
++++ b/experiments/longmemeval/run_lightmem_qwen.py
+@@ -23,13 +23,26 @@ if str(WORKSPACE_ROOT) not in sys.path:
+     sys.path.insert(0, str(WORKSPACE_ROOT))
+ 
+ from lightmem.observability import configure_llm_call_logger, get_llm_call_logger
+-from evaluation.long_session_benchmark import (
+-    BENCHMARK_NAME as LONG_SESSION_BENCHMARK,
+-    BUNDLE_BENCHMARK_NAME as LONG_SESSION_BUNDLE_BENCHMARK,
+-    is_long_session_benchmark_item,
+-    iter_gold_turn_ids,
+-    load_benchmark_items,
+-)
++try:
++    from evaluation.long_session_benchmark import (
++        BENCHMARK_NAME as LONG_SESSION_BENCHMARK,
++        BUNDLE_BENCHMARK_NAME as LONG_SESSION_BUNDLE_BENCHMARK,
++        is_long_session_benchmark_item,
++        iter_gold_turn_ids,
++        load_benchmark_items,
++    )
++except ModuleNotFoundError:
++    LONG_SESSION_BENCHMARK = "long-session"
++    LONG_SESSION_BUNDLE_BENCHMARK = "long-session-bundle"
++
++    def is_long_session_benchmark_item(item):
++        return False
++
++    def iter_gold_turn_ids(item):
++        return iter(())
++
++    def load_benchmark_items(path, benchmark="auto"):
++        return load_json(Path(path))
+ 
+ DEFAULT_DATA_PATH = WORKSPACE_ROOT / "data" / "longmemeval_s_cleaned.json"
+ DEFAULT_RESULTS_ROOT = LIGHTMEM_ROOT / "experiments" / "results"
+@@ -395,7 +408,21 @@ def build_summary_from_existing(
+     }
+ 
+ 
+-def load_lightmem(collection_name, *, llm_model, api_key, api_base_url, llmlingua_model_path, embedding_model_path, qdrant_data_dir):
++def load_lightmem(
++    collection_name,
++    *,
++    llm_model,
++    api_key,
++    api_base_url,
++    llmlingua_model_path,
++    llmlingua_device,
++    embedding_provider,
++    embedding_model_path,
++    embedding_api_key,
++    embedding_api_base_url,
++    embedding_dims,
++    qdrant_data_dir,
++):
+     from lightmem.memory.lightmem import LightMemory
+ 
+     config = {
+@@ -405,7 +432,7 @@ def load_lightmem(collection_name, *, llm_model, api_key, api_base_url, llmlingu
+             "configs": {
+                 "llmlingua_config": {
+                     "model_name": llmlingua_model_path,
+-                    "device_map": "cuda",
++                    "device_map": llmlingua_device,
+                     "use_llmlingua2": True,
+                 },
+             }
+@@ -430,10 +457,12 @@ def load_lightmem(collection_name, *, llm_model, api_key, api_base_url, llmlingu
+         "extract_threshold": 0.1,
+         "index_strategy": "embedding",
+         "text_embedder": {
+-            "model_name": "huggingface",
++            "model_name": embedding_provider,
+             "configs": {
+                 "model": embedding_model_path,
+-                "embedding_dims": 384,
++                "embedding_dims": embedding_dims,
++                "api_key": embedding_api_key,
++                "openai_base_url": embedding_api_base_url,
+                 "model_kwargs": {"device": "cuda"},
+             },
+         },
+@@ -442,7 +471,7 @@ def load_lightmem(collection_name, *, llm_model, api_key, api_base_url, llmlingu
+             "model_name": "qdrant",
+             "configs": {
+                 "collection_name": collection_name,
+-                "embedding_model_dims": 384,
++                "embedding_model_dims": embedding_dims,
+                 "path": str(qdrant_data_dir / collection_name),
+             }
+         },
+@@ -469,8 +498,13 @@ def parse_args():
+     parser.add_argument("--judge-api-key", type=str, default=None)
+     parser.add_argument("--judge-model", type=str, default=None)
+     parser.add_argument("--llm-model", type=str, default=None)
++    parser.add_argument("--embedding-provider", type=str, default="huggingface", choices=["huggingface", "openai"])
+     parser.add_argument("--embedding-model-path", type=str, default=DEFAULT_EMBEDDING_MODEL_PATH)
++    parser.add_argument("--embedding-api-base-url", type=str, default=None)
++    parser.add_argument("--embedding-api-key", type=str, default="EMPTY")
++    parser.add_argument("--embedding-dims", type=int, default=384)
+     parser.add_argument("--llmlingua-model-path", type=str, default=DEFAULT_LLM_MODEL_PATH)
++    parser.add_argument("--llmlingua-device", type=str, default=os.getenv("LIGHTMEM_LLMLINGUA_DEVICE", "cpu"))
+     parser.add_argument("--limit", type=int, default=None)
+     parser.add_argument("--answer-limit", type=int, default=20)
+     return parser.parse_args()
+@@ -482,8 +516,12 @@ def main():
+     judge_api_base_url = normalize_base_url(args.judge_api_base_url or args.api_base_url)
+     data_path = args.data_path.resolve()
+ 
+-    served_model_info = discover_vllm_model(api_base_url)
+-    llm_model_name = args.llm_model or served_model_info["id"]
++    if args.llm_model:
++        llm_model_name = args.llm_model
++        served_model_info = {"id": llm_model_name, "source": "explicit-arg"}
++    else:
++        served_model_info = discover_vllm_model(api_base_url)
++        llm_model_name = served_model_info["id"]
+     judge_model_name = args.judge_model or llm_model_name
+ 
+     if args.resume_results_dir is not None:
+@@ -551,7 +589,12 @@ def main():
+                 api_key=args.api_key,
+                 api_base_url=api_base_url,
+                 llmlingua_model_path=args.llmlingua_model_path,
++                llmlingua_device=args.llmlingua_device,
++                embedding_provider=args.embedding_provider,
+                 embedding_model_path=args.embedding_model_path,
++                embedding_api_key=args.embedding_api_key,
++                embedding_api_base_url=normalize_base_url(args.embedding_api_base_url) if args.embedding_api_base_url else None,
++                embedding_dims=args.embedding_dims,
+                 qdrant_data_dir=active_qdrant_dir,
+             )
+             base_trace_context = {
+@@ -693,6 +736,7 @@ def main():
+                         "judge_model": judge_model_name,
+                         "embedding_model_path": args.embedding_model_path,
+                         "llmlingua_model_path": args.llmlingua_model_path,
++                        "llmlingua_device": args.llmlingua_device,
+                         "answer_limit": args.answer_limit,
+                     },
+                 }
+@@ -729,7 +773,12 @@ def main():
+             api_key=args.api_key,
+             api_base_url=api_base_url,
+             llmlingua_model_path=args.llmlingua_model_path,
++            llmlingua_device=args.llmlingua_device,
++            embedding_provider=args.embedding_provider,
+             embedding_model_path=args.embedding_model_path,
++            embedding_api_key=args.embedding_api_key,
++            embedding_api_base_url=normalize_base_url(args.embedding_api_base_url) if args.embedding_api_base_url else None,
++            embedding_dims=args.embedding_dims,
+             qdrant_data_dir=active_qdrant_dir,
+         )
+         trace_context = {
+@@ -843,6 +892,7 @@ def main():
+                 "judge_model": judge_model_name,
+                 "embedding_model_path": args.embedding_model_path,
+                 "llmlingua_model_path": args.llmlingua_model_path,
++                "llmlingua_device": args.llmlingua_device,
+                 "answer_limit": args.answer_limit,
+             },
+         }
+diff --git a/src/lightmem/factory/pre_compressor/llmlingua_2.py b/src/lightmem/factory/pre_compressor/llmlingua_2.py
+index daee4f5f015c793daa019e229366797a00aa29d3..4b80bca2c39510322feed1d36ee0c35935ee3953 100644
+--- a/src/lightmem/factory/pre_compressor/llmlingua_2.py
++++ b/src/lightmem/factory/pre_compressor/llmlingua_2.py
+@@ -32,6 +32,8 @@ class LlmLingua2Compressor:
+                     model_name=config.llmlingua_config['model_name'],
+                     device_map=config.llmlingua_config['device_map']
+                 )
++            if hasattr(self._compressor, "model") and hasattr(self._compressor.model, "config"):
++                self._compressor.model.config._attn_implementation = "eager"
+         except Exception as e:
+             raise RuntimeError(f"Failed to initialize LlmLingua2Compressor: {str(e)}")
+ 
+diff --git a/src/lightmem/factory/topic_segmenter/llmlingua_2.py b/src/lightmem/factory/topic_segmenter/llmlingua_2.py
+index 841c176425b0e7234ab374b93d62213ca093247b..ba01f9bab737890709b143f77d0ee616d6c4d59a 100644
+--- a/src/lightmem/factory/topic_segmenter/llmlingua_2.py
++++ b/src/lightmem/factory/topic_segmenter/llmlingua_2.py
+@@ -11,6 +11,7 @@ class LlmLingua2Segmenter:
+                 pretrained_model_name_or_path=self.config["model_name"],
+                 device_map=self.config.get("device_map", None),
+                 torch_dtype=self.config.get("torch_dtype", None),
++                attn_implementation=self.config.get("attn_implementation", "eager"),
+                 **self.config.get("model_config", {})
+             ).eval()
+             self.tokenizer = AutoTokenizer.from_pretrained(self.config["model_name"])
+@@ -50,7 +51,11 @@ class LlmLingua2Segmenter:
+             outputs = model(input_tensor, attention_mask=attention_mask, output_attentions=True, return_dict=True)
+             attentions = outputs.attentions
+ 
+-        selected = [attentions[i] for i in self.layers]
++        if not attentions:
++            return np.zeros((len(buffer_texts), len(buffer_texts)), dtype=float)
++        selected = [attentions[i] for i in self.layers if i < len(attentions)]
++        if not selected:
++            selected = list(attentions)
+         att_stack = torch.stack(selected, dim=0)
+         att_mean = att_stack.mean(dim=(0, 2))[0].cpu().numpy()
+ 

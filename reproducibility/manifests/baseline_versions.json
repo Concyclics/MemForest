@@ -5,29 +5,35 @@
   },
   "evermemos": {
     "repository": "https://github.com/EverMind-AI/EverMemOS",
-    "base_commit": "539db77d5cc804c875246e34611fd266bf8c1e5d"
+    "base_commit": "539db77d5cc804c875246e34611fd266bf8c1e5d",
+    "artifact_path": "reproducibility/baselines/evermemos"
   },
   "mem0": {
     "repository": "https://github.com/mem0ai/mem0",
     "commit": "4642a1d6e372e985fff9683070b0127bf6d77621",
-    "adapter": "EverMemOS local REST adapter with benchmark event_time and created_at propagation"
+    "adapter": "EverMemOS local REST adapter with benchmark event_time and created_at propagation",
+    "artifact_path": "reproducibility/baselines/mem0"
   },
   "lightmem": {
     "repository": "https://github.com/zjunlp/LightMem",
-    "base_commit": "82230514d06b0401f16be25fa44a7985596dbcbd"
+    "base_commit": "82230514d06b0401f16be25fa44a7985596dbcbd",
+    "artifact_path": "reproducibility/baselines/lightmem"
   },
   "memoryos": {
     "repository": "https://github.com/BAI-LAB/MemoryOS",
-    "base_commit": "8688d5128901a88a70a3ba961de8705a6cdab4c0"
+    "base_commit": "8688d5128901a88a70a3ba961de8705a6cdab4c0",
+    "artifact_path": "reproducibility/baselines/memoryos"
   },
   "mempalace": {
     "repository": "https://github.com/milla-jovovich/mempalace",
-    "base_commit": "71736a3f4f1afe01982d5b0d4c36eb5405eaab91"
+    "base_commit": "71736a3f4f1afe01982d5b0d4c36eb5405eaab91",
+    "artifact_path": "reproducibility/baselines/mempalace"
   },
   "memorydata_zep_local": {
     "repository": "https://github.com/OpenDataBox/MemoryData",
     "commit": "c63391c128e33eedb91115edf689f12acf4bbc63",
-    "entry_point": "methods/zep_local/main.py"
+    "entry_point": "methods/zep_local/main.py",
+    "artifact_path": "reproducibility/baselines/zep_local"
   },
   "graphiti_zep_local": {
     "repository": "https://github.com/getzep/graphiti",
