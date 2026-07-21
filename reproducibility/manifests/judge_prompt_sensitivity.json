@@ -1,0 +1,25 @@
+{
+  "run_id": "revision_e3_judge_prompt_sensitivity_20260716",
+  "status": "complete",
+  "purpose": "paired fixed-answer sensitivity to appendix and historical Mem0-family judge prompts",
+  "scope": {
+    "methods": ["evermemos", "memforest", "mem0"],
+    "longmemeval_questions_per_method": 172,
+    "locomo_questions_per_method": 200,
+    "repetitions": 3,
+    "prompt_arm_items": 2832,
+    "expected_calls": 8496
+  },
+  "protocol": {
+    "judge_model": "deepseek-chat",
+    "temperature": 0.0,
+    "comparison": "judge prompt only; retrieval and generated answers frozen",
+    "api_key_recorded": false
+  },
+  "validation": {
+    "observed_calls": 8496,
+    "judge_errors": 0,
+    "majority_rows": 2832,
+    "all_majorities_complete": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "judge_model": "deepseek-chat",
+  "judge_url": "https://api.deepseek.com/v1",
+  "prompt_version": "appendix",
+  "passk_definition": "prefix pass@k: a method-question pair passes if any of the first k sampled answers is judged CORRECT",
+  "longmemeval_prompt": "Your task is to label an answer to a LongMemEval question as CORRECT or WRONG.\n\nYou will be given:\n(1) question type\n(2) question\n(3) gold answer\n(4) generated answer\n\nBe generous with grading:\n(1) accept semantically equivalent answers;\n(2) accept equivalent relative and absolute time expressions;\n(3) accept more specific but consistent answers;\n(4) mark WRONG only for contradiction, missing key facts, answering a different question, or incorrect abstention.\n\nQuestion type: {question_type}\nQuestion: {question}\nGold answer: {gold_answer}\nGenerated answer: {generated_answer}\n\nReturn JSON only with {{\"label\": \"CORRECT\"}} or {{\"label\": \"WRONG\"}}.",
+  "locomo_prompt": "Your task is to label an answer to a question as CORRECT or WRONG.\n\nYou will be given:\n(1) question\n(2) gold answer\n(3) generated answer\n\nBe generous with grading:\n(1) accept semantically equivalent answers;\n(2) accept equivalent relative and absolute time expressions;\n(3) accept more specific but consistent answers;\n(4) mark WRONG only for contradiction, missing key facts, non-answer, or incorrect abstention.\n\nQuestion: {question}\nGold answer: {gold_answer}\nGenerated answer: {generated_answer}\n\nReturn JSON only with {{\"label\": \"CORRECT\"}} or {{\"label\": \"WRONG\"}}."
+}

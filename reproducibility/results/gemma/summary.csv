@@ -1,0 +1,15 @@
+method,benchmark,n,correct,wrong,accuracy,judge_errors
+mem0,longmemeval,500,267,233,0.534,0
+mem0,locomo,1540,769,771,0.4993506493506494,0
+evermemos,longmemeval,500,382,118,0.764,0
+evermemos,locomo,1540,1172,368,0.7610389610389611,0
+lightmem,longmemeval,500,367,133,0.734,0
+lightmem,locomo,1540,1101,439,0.714935064935065,0
+memoryos,longmemeval,500,285,215,0.57,0
+memoryos,locomo,1540,1074,466,0.6974025974025974,0
+mempalace,longmemeval,500,348,152,0.696,0
+mempalace,locomo,1540,1231,309,0.7993506493506494,0
+memforest_agent,longmemeval,500,384,116,0.768,0
+memforest_agent,locomo,1540,1155,385,0.75,0
+memforest_embed_browse,longmemeval,500,386,114,0.772,0
+memforest_embed_browse,locomo,1540,1137,403,0.7383116883116884,0

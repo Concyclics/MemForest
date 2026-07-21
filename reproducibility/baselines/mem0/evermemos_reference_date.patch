@@ -1,0 +1,14 @@
+diff --git a/evaluation/src/adapters/online_base.py b/evaluation/src/adapters/online_base.py
+index e87822b..f5f3e20 100644
+--- a/evaluation/src/adapters/online_base.py
++++ b/evaluation/src/adapters/online_base.py
+@@ -558,6 +558,10 @@ class OnlineAPIAdapter(BaseAdapter):
+         Subclasses can override this method to use their own specific prompt.
+         Defaults to ANSWER_PROMPT_MEMOS (suitable for most systems).
+         """
++        reference_date = kwargs.get("reference_date") or kwargs.get("question_date")
++        if reference_date:
++            context = f"[Reference date: {reference_date}]\n\n{context}"
++
+         # Get answer prompt (subclasses can override _get_answer_prompt)
+         prompt = self._get_answer_prompt().format(context=context, question=query)

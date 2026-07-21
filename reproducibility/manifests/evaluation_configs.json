@@ -1,0 +1,40 @@
+{
+  "shared": {
+    "main_final_retrieval_k": 10,
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_dimension": 1024,
+    "timestamp_policy": "propagate benchmark event/session timestamps through ingestion and retrieved context",
+    "longmemeval_reference_date": "question_date from benchmark item",
+    "primary_answer_policy": "released or recommended schema-aware answer path",
+    "sensitivity_answer_policy": "shared_strong_v1 instruction only",
+    "judge_model": "deepseek-chat",
+    "judge_temperature": 0.0
+  },
+  "mem0_corrected": {
+    "base_commit": "4642a1d6e372e985fff9683070b0127bf6d77621",
+    "harness_base_commit": "539db77d5cc804c875246e34611fd266bf8c1e5d",
+    "deployment": "local REST server with isolated local Qdrant state per conversation shard",
+    "ingestion_timestamp_fields": ["timestamp", "metadata.created_at", "metadata.event_time"],
+    "candidate_policy": "retrieve both participant perspectives, then globally reduce to final k=10",
+    "full_questions": 500,
+    "shards": 128
+  },
+  "zep_local": {
+    "memorydata_commit": "c63391c128e33eedb91115edf689f12acf4bbc63",
+    "graphiti_version": "0.24.1",
+    "graphiti_commit": "d2654003ffc11821bce73c493162a40181b23504",
+    "neo4j": "5.26.2",
+    "ingestion": "Graphiti.add_episode with benchmark reference_time",
+    "search": "released combined hybrid cross-encoder recipe",
+    "search_config_limit": 10,
+    "limit_semantics": "per result class, not global flat-fact limit",
+    "answer_prompt": "MemoryData Zep Local schema-aware path"
+  },
+  "gemma_generality": {
+    "model": "google/gemma-4-12B-it",
+    "replacement_scope": "all generative stages from memory build through answer generation",
+    "embedding_fixed": true,
+    "longmemeval_questions_per_method": 500,
+    "locomo_categories_1_4_questions_per_method": 1540
+  }
+}

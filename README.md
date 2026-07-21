@@ -28,6 +28,28 @@ It includes:
 
 Reviewers can either inspect the released benchmark outputs directly or run the system with their own OpenAI-compatible model endpoints.
 
+## VLDB Revision Artifacts
+
+The revision package is organized under [`reproducibility/`](reproducibility/).
+It includes pinned baseline versions, timestamp and retrieval policies,
+baseline reproduction methods, corrected Mem0 results, the Gemma cross-family
+benchmark, the Zep Local full-system benchmark, judge-prompt sensitivity
+results, and sanitized per-question data.
+
+Start with:
+
+- [`reproducibility/BASELINES.md`](reproducibility/BASELINES.md) for baseline
+  setup and reproduction boundaries;
+- [`reproducibility/PROTOCOL.md`](reproducibility/PROTOCOL.md) for the shared
+  evaluation protocol;
+- [`reproducibility/RESULTS.md`](reproducibility/RESULTS.md) for updated result
+  tables;
+- [`reproducibility/scripts/verify_release.py`](reproducibility/scripts/verify_release.py)
+  for an offline completeness check.
+
+The CSVs under [`benchmark/`](benchmark/) are retained as the original
+submission snapshot. Revision results do not silently overwrite them.
+
 ## Overview
 
 MemForest is a persistent memory system for long-context LLM agents. It converts dialogue sessions into canonical facts, organizes memory into scoped temporal trees, and retrieves evidence through tree-level recall followed by tree browsing.
@@ -46,6 +68,7 @@ The main design components are:
 .
 ├── paper/                  # Main submission PDF and supplementary appendix
 ├── benchmark/              # Per-question outputs and judge results
+├── reproducibility/        # Revision protocols, baseline recipes, and updated results
 ├── src/                    # MemForest implementation
 │   ├── api/                # OpenAI-compatible chat and embedding clients
 │   ├── build/              # Tree construction, routing, and indexing

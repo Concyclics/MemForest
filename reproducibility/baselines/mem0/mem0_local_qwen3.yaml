@@ -1,0 +1,32 @@
+name: "mem0_local_qwen3"
+version: "1.0"
+description: "Mem0 local REST baseline with local Qwen3 services"
+
+adapter: "mem0"
+
+api_mode: "local_rest"
+api_url: "${MEM0_BASE_URL:http://127.0.0.1:8888}"
+api_key: "${MEM0_ADMIN_API_KEY:mem0-local-key}"
+
+batch_size: 8
+max_retries: 5
+max_content_length: 8000
+add_interval: 0.0
+
+num_workers: ${BASELINE_NUM_WORKERS:16}
+post_add_wait_seconds: 0
+
+llm:
+  provider: "openai"
+  model: "${BASELINE_LLM_MODEL:Qwen/Qwen3-4B-Instruct-2507-FP8}"
+  api_key: "${BASELINE_LLM_API_KEY:EMPTY}"
+  base_url: "${BASELINE_LLM_BASE_URL:http://localhost:8004/v1}"
+  temperature: 0
+  max_tokens: 32768
+
+search:
+  top_k: 10
+  search_interval: 0.0
+
+answer:
+  max_retries: 3

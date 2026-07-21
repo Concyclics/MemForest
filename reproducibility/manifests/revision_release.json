@@ -1,0 +1,39 @@
+{
+  "release": "vldb_revision_2026_07",
+  "status": "public_single_blind_repository",
+  "datasets": {
+    "longmemeval_s_cleaned": {
+      "questions": 500,
+      "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442"
+    },
+    "locomo10_real": {
+      "questions_full": 1986,
+      "questions_categories_1_4": 1540,
+      "questions_category_5": 446,
+      "sha256": "8228d3ff4fbfcd7641178faccc08fee5ccc4c76a8de5e7cbefcb1ca10740fc65"
+    },
+    "locomo10_gold_source": {
+      "sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4"
+    }
+  },
+  "models": {
+    "qwen3_4b": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+    "qwen3_30b": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+    "gemma": "google/gemma-4-12B-it",
+    "embedding": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_dimension": 1024,
+    "judge": "deepseek-chat"
+  },
+  "policies": {
+    "main_final_retrieval_k": 10,
+    "timestamp": "benchmark event/session time propagated through ingestion and answer context",
+    "answer": "recommended schema-aware path for primary rows; shared instruction only as sensitivity",
+    "judge": "appendix prompt; zero-error completeness required"
+  },
+  "results": {
+    "mem0_corrected": "results/mem0_corrected",
+    "gemma": "results/gemma",
+    "zep_local": "results/zep_local",
+    "judge_prompt_sensitivity": "results/judge_prompt_sensitivity"
+  }
+}

@@ -1,0 +1,156 @@
+[
+  {
+    "method": "mem0",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "mem0",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "evermemos",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "evermemos",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "lightmem",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "lightmem",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "memoryos",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "memoryos",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "mempalace",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "mempalace",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "memforest_agent",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "memforest_agent",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  },
+  {
+    "method": "memforest_embed_browse",
+    "benchmark": "longmemeval",
+    "expected": 500,
+    "records": 500,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 500
+    }
+  },
+  {
+    "method": "memforest_embed_browse",
+    "benchmark": "locomo",
+    "expected": 1540,
+    "records": 1540,
+    "missing": 0,
+    "empty_answer": 0,
+    "status_counts": {
+      "ok": 1540
+    }
+  }
+]

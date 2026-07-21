@@ -1,0 +1,128 @@
+[
+  {
+    "method": "mem0",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 267,
+    "wrong": 233,
+    "accuracy": 0.534,
+    "judge_errors": 0
+  },
+  {
+    "method": "mem0",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 769,
+    "wrong": 771,
+    "accuracy": 0.4993506493506494,
+    "judge_errors": 0
+  },
+  {
+    "method": "evermemos",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 382,
+    "wrong": 118,
+    "accuracy": 0.764,
+    "judge_errors": 0
+  },
+  {
+    "method": "evermemos",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1172,
+    "wrong": 368,
+    "accuracy": 0.7610389610389611,
+    "judge_errors": 0
+  },
+  {
+    "method": "lightmem",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 367,
+    "wrong": 133,
+    "accuracy": 0.734,
+    "judge_errors": 0
+  },
+  {
+    "method": "lightmem",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1101,
+    "wrong": 439,
+    "accuracy": 0.714935064935065,
+    "judge_errors": 0
+  },
+  {
+    "method": "memoryos",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 285,
+    "wrong": 215,
+    "accuracy": 0.57,
+    "judge_errors": 0
+  },
+  {
+    "method": "memoryos",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1074,
+    "wrong": 466,
+    "accuracy": 0.6974025974025974,
+    "judge_errors": 0
+  },
+  {
+    "method": "mempalace",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 348,
+    "wrong": 152,
+    "accuracy": 0.696,
+    "judge_errors": 0
+  },
+  {
+    "method": "mempalace",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1231,
+    "wrong": 309,
+    "accuracy": 0.7993506493506494,
+    "judge_errors": 0
+  },
+  {
+    "method": "memforest_agent",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 384,
+    "wrong": 116,
+    "accuracy": 0.768,
+    "judge_errors": 0
+  },
+  {
+    "method": "memforest_agent",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1155,
+    "wrong": 385,
+    "accuracy": 0.75,
+    "judge_errors": 0
+  },
+  {
+    "method": "memforest_embed_browse",
+    "benchmark": "longmemeval",
+    "n": 500,
+    "correct": 386,
+    "wrong": 114,
+    "accuracy": 0.772,
+    "judge_errors": 0
+  },
+  {
+    "method": "memforest_embed_browse",
+    "benchmark": "locomo",
+    "n": 1540,
+    "correct": 1137,
+    "wrong": 403,
+    "accuracy": 0.7383116883116884,
+    "judge_errors": 0
+  }
+]
