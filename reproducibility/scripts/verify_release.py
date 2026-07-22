@@ -190,6 +190,32 @@ def check_semantic_audit() -> None:
         assert len(rows) == expected
         assert not any(row.get("error") for row in rows)
 
+    expanded = root / "expanded"
+    expanded_summary = read_json(expanded / "expanded_semantic_audit_summary.json")
+    assert expanded_summary["provenance"]["human_gold"] is False
+    temporal = expanded_summary["temporal"]
+    assert temporal["rows"] == 249
+    assert temporal["model_assisted_fully_upheld"] == 162
+    assert temporal["author_signoff_required"] == 87
+    entity = expanded_summary["entity_routing"]
+    assert entity["rows"] == 300
+    assert entity["active_key_rows"] == 127
+    assert entity["active_precision_pass"] == 124
+    assert entity["active_precision_author_signoff_required"] == 3
+    judge = expanded_summary["judge_calibration"]
+    assert judge["rows"] == 120
+    assert judge["agreement_rows"] == 80
+    assert judge["disagreement_rows"] == 40
+    assert judge["stable_without_author_signoff"] == 108
+    assert judge["author_signoff_required"] == 12
+    expanded_raw = {"temporal": 249, "entity": 300, "judge": 120}
+    for name, expected in expanded_raw.items():
+        rows = list(read_jsonl(
+            expanded / "raw" / f"{name}_independent_audit_{expected}.jsonl"
+        ))
+        assert len(rows) == expected
+        assert not any(row.get("error") for row in rows)
+
 
 def main() -> None:
     check_baseline_implementations()

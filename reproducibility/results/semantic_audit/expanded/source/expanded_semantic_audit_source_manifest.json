@@ -1,0 +1,19 @@
+{
+  "created": "2026-07-22",
+  "selection_before_semantic_review": true,
+  "temporal": {
+    "rows": 249,
+    "double_label_rows": 50,
+    "source_union": [
+      79,
+      200
+    ]
+  },
+  "judge": {
+    "rows": 120,
+    "disagreements": 40,
+    "agreements": 80,
+    "agreement_cell_quota": 20,
+    "agreement_qids_unique": true
+  }
+}

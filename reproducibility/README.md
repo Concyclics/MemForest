@@ -28,6 +28,10 @@ repository rather than to a separate anonymized archive.
   reruns the optional local Qwen semantic review.
 - [`scripts/summarize_independent_semantic_audit.py`](scripts/summarize_independent_semantic_audit.py):
   validates and joins the released semantic audit without API access.
+- [`scripts/run_expanded_semantic_audit.py`](scripts/run_expanded_semantic_audit.py):
+  reruns the expanded 249/300/120 local Qwen review.
+- [`scripts/summarize_expanded_semantic_audit.py`](scripts/summarize_expanded_semantic_audit.py):
+  validates and regenerates the expanded joined records without API access.
 - [`SHA256SUMS`](SHA256SUMS): checksums for every released revision file.
 
 The original submission's four large per-question CSV files remain in

@@ -1,7 +1,7 @@
 # Independent semantic audit
 
-This directory releases the final evidence-governance audit used by the VLDB
-revision response. It covers:
+This directory releases the evidence-governance audits used by the VLDB
+revision response. The original audit covers:
 
 - 79 provisional temporal evidence mappings;
 - 200 stratified entity-routing records;
@@ -12,6 +12,11 @@ The semantic first pass uses
 `Qwen3-30B-A3B-Instruct-2507-FP8` at temperature zero. Codex independently
 checks joins, IDs, policy disagreements, and reporting boundaries. These files
 are model-assisted review records, not author-verified human gold.
+
+The `expanded/` directory freezes a larger sample selected before independent
+review: 249 temporal mappings, 300 entity-routing facts, and 120 judge
+calibration pairs. The judge sample contains all 40 policy disagreements plus
+80 cutoff/label-stratified agreement controls.
 
 ## Headline audit decisions
 
@@ -26,6 +31,11 @@ are model-assisted review records, not author-verified human gold.
   on seven. Eight subjective boundary cases remain separated for optional
   author sign-off. Since the sample is conditioned on disagreement, these
   ratios are not an unconditional judge-accuracy estimate.
+- In the expanded audit, 162/249 temporal mappings satisfy the complete
+  high-confidence exact-reproduction criterion, 124/127 active entity
+  assignments pass precision, and 108/120 judge adjudications are stable
+  without further author sign-off. The corresponding 87, 3, and 12 exceptions
+  remain in explicit sign-off queues.
 
 ## Layout
 
@@ -34,11 +44,15 @@ are model-assisted review records, not author-verified human gold.
 - `*_author_signoff_required.csv`: unresolved or subjective rows;
 - `source/`: frozen source sheets;
 - `raw/`: raw model outputs.
+- `expanded/source/`: larger frozen source sheets and selection manifest;
+- `expanded/raw/`: larger raw model outputs;
+- `expanded/*_review_*.csv`: joined expanded reviews and sign-off queues.
 
 To regenerate the joined records without API access:
 
 ```bash
 python reproducibility/scripts/summarize_independent_semantic_audit.py
+python reproducibility/scripts/summarize_expanded_semantic_audit.py
 ```
 
 To rerun the semantic model pass, start the pinned Qwen endpoint at
@@ -46,4 +60,5 @@ To rerun the semantic model pass, start the pinned Qwen endpoint at
 
 ```bash
 python reproducibility/scripts/run_independent_semantic_audit.py
+python reproducibility/scripts/run_expanded_semantic_audit.py
 ```

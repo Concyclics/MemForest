@@ -68,6 +68,15 @@ entity. Independent disagreement review prefers strict on 33/40 and public on
 sign-off. These are model-assisted independent reviews, not human gold. Files:
 [`results/semantic_audit/`](results/semantic_audit/).
 
+The expanded, pre-frozen audit contains 249 temporal mappings, 300
+entity-routing facts, and 120 judge-calibration pairs. It fully reproduces
+162/249 provisional temporal mappings; 124/127 active entity assignments pass
+precision; and 108/120 judge adjudications are stable without additional
+author sign-off. All exceptions remain in explicit sign-off queues. The larger
+counts strengthen the bounded diagnostics but do not convert model-assisted
+labels into human gold. Files:
+[`results/semantic_audit/expanded/`](results/semantic_audit/expanded/).
+
 ## Zep Local full-system baseline
 
 | Backbone | LongMemEval-S | LME temporal | LoCoMo cat. 1-4 | LoCoMo full |

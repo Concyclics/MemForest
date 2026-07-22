@@ -1,0 +1,83 @@
+{
+  "created": "2026-07-22",
+  "provenance": {
+    "human_gold": false,
+    "description": "Frozen stratified samples independently reviewed with Qwen3-30B and Codex-assisted adjudication; unresolved rows require author sign-off."
+  },
+  "temporal": {
+    "rows": 249,
+    "selection_frozen_before_independent_review": true,
+    "double_label_rows": 50,
+    "model_assisted_fully_upheld": 162,
+    "author_signoff_required": 87,
+    "type_exact_match": 175,
+    "gold_ids_exact_match": 214,
+    "conflict_ids_exact_match": 228,
+    "by_benchmark": {
+      "locomo": 146,
+      "longmemeval": 103
+    },
+    "independent_type_counts": {
+      "current-vs-old": 9,
+      "duration": 60,
+      "historical-state": 155,
+      "ordering": 25
+    }
+  },
+  "entity_routing": {
+    "rows": 300,
+    "selection_frozen_before_independent_review": true,
+    "active_key_rows": 127,
+    "active_precision_pass": 124,
+    "active_precision_pass_rate": 0.9763779527559056,
+    "active_precision_author_signoff_required": 3,
+    "active_full_recall_pass": 9,
+    "active_partial_recall": 114,
+    "active_recall_fail": 4,
+    "by_stratum": {
+      "multi_session_active": {
+        "precision_PASS": 57,
+        "recall_PARTIAL": 52,
+        "recall_PASS": 5,
+        "precision_PARTIAL": 1,
+        "recall_FAIL": 3,
+        "precision_FAIL": 2
+      },
+      "multi_session_lazy_only": {
+        "precision_NOT_APPLICABLE": 60,
+        "recall_FAIL": 45,
+        "recall_NOT_APPLICABLE": 15
+      },
+      "other_multi_entity": {
+        "precision_NOT_APPLICABLE": 53,
+        "recall_FAIL": 42,
+        "precision_PASS": 7,
+        "recall_PARTIAL": 7,
+        "recall_NOT_APPLICABLE": 11
+      },
+      "temporal_active": {
+        "precision_PASS": 60,
+        "recall_PARTIAL": 55,
+        "recall_FAIL": 1,
+        "recall_PASS": 4
+      },
+      "temporal_lazy_only": {
+        "precision_NOT_APPLICABLE": 60,
+        "recall_FAIL": 38,
+        "recall_NOT_APPLICABLE": 22
+      }
+    }
+  },
+  "judge_calibration": {
+    "rows": 120,
+    "selection_frozen_before_independent_review": true,
+    "agreement_rows": 80,
+    "disagreement_rows": 40,
+    "stable_without_author_signoff": 108,
+    "author_signoff_required": 12,
+    "stable_strict_preferred": 30,
+    "stable_public_preferred": 2,
+    "stable_both_judges_agree": 76,
+    "qwen_matches_codex_label": 96
+  }
+}
