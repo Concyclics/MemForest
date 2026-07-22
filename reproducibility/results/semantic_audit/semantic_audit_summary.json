@@ -1,0 +1,69 @@
+{
+  "provenance": {
+    "semantic_reviewer": "Qwen3-30B-A3B-Instruct-2507-FP8",
+    "policy_adjudication": "Codex independent review",
+    "human_gold": false,
+    "generated_at": "2026-07-22"
+  },
+  "temporal": {
+    "rows": 79,
+    "high_confidence": 77,
+    "provisional_fully_upheld": 33,
+    "author_signoff_required": 46,
+    "type_exact_match": 46,
+    "gold_ids_exact_match": 65,
+    "conflict_ids_exact_match": 65
+  },
+  "entity_routing": {
+    "rows": 200,
+    "active_key_rows": 86,
+    "active_precision_pass": 84,
+    "active_precision_pass_rate": 0.9767441860465116,
+    "active_recall_pass_or_partial": 84,
+    "active_recall_pass_or_partial_rate": 0.9767441860465116,
+    "active_full_recall_pass": 5,
+    "author_signoff_required": 2,
+    "by_stratum": {
+      "multi_session_active": {
+        "precision_PASS": 38,
+        "recall_PARTIAL": 37,
+        "recall_PASS": 1,
+        "precision_FAIL": 2,
+        "recall_FAIL": 2
+      },
+      "multi_session_lazy_only": {
+        "precision_NOT_APPLICABLE": 40,
+        "recall_FAIL": 27,
+        "recall_NOT_APPLICABLE": 13
+      },
+      "other_multi_entity": {
+        "precision_NOT_APPLICABLE": 34,
+        "recall_FAIL": 26,
+        "precision_PASS": 6,
+        "recall_PARTIAL": 5,
+        "recall_NOT_APPLICABLE": 8,
+        "recall_PASS": 1
+      },
+      "temporal_active": {
+        "precision_PASS": 40,
+        "recall_PARTIAL": 37,
+        "recall_PASS": 3
+      },
+      "temporal_lazy_only": {
+        "precision_NOT_APPLICABLE": 40,
+        "recall_FAIL": 23,
+        "recall_NOT_APPLICABLE": 17
+      }
+    }
+  },
+  "judge_disagreements": {
+    "rows": 40,
+    "codex_prefers_strict": 33,
+    "codex_prefers_public": 7,
+    "author_signoff_required": 8,
+    "public_only_accepts": 34,
+    "public_only_accepts_upheld": 5,
+    "strict_only_accepts": 6,
+    "strict_only_accepts_upheld": 4
+  }
+}

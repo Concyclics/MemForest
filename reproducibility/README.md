@@ -18,6 +18,16 @@ repository rather than to a separate anonymized archive.
 - [`results/`](results/): compact summaries and sanitized per-question records.
 - [`scripts/verify_release.py`](scripts/verify_release.py): offline completeness,
   count, and headline-result checks.
+- [`scripts/profile_mem0_retrieval_budget.py`](scripts/profile_mem0_retrieval_budget.py):
+  profiles the fraction of each frozen Mem0 store exposed by top-k retrieval.
+- [`scripts/run_mem0_budget_judge_control.py`](scripts/run_mem0_budget_judge_control.py):
+  reruns the frozen-store top-50/top-200 answer and dual-judge control.
+- [`results/semantic_audit/`](results/semantic_audit/): frozen source sheets,
+  independent review records, author-signoff queues, and aggregate decisions.
+- [`scripts/run_independent_semantic_audit.py`](scripts/run_independent_semantic_audit.py):
+  reruns the optional local Qwen semantic review.
+- [`scripts/summarize_independent_semantic_audit.py`](scripts/summarize_independent_semantic_audit.py):
+  validates and joins the released semantic audit without API access.
 - [`SHA256SUMS`](SHA256SUMS): checksums for every released revision file.
 
 The original submission's four large per-question CSV files remain in

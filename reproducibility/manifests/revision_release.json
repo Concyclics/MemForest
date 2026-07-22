@@ -26,12 +26,16 @@
   },
   "policies": {
     "main_final_retrieval_k": 10,
+    "retrieval_budget_diagnostic_k": [50, 200],
     "timestamp": "benchmark event/session time propagated through ingestion and answer context",
     "answer": "recommended schema-aware path for primary rows; shared instruction only as sensitivity",
     "judge": "appendix prompt; zero-error completeness required"
   },
   "results": {
     "mem0_corrected": "results/mem0_corrected",
+    "mem0_retrieval_budget_store_profile": "results/mem0_corrected/retrieval_budget_store_profile.json",
+    "mem0_top50_top200_control": "results/mem0_corrected/top50_top200_control",
+    "semantic_audit": "results/semantic_audit",
     "gemma": "results/gemma",
     "zep_local": "results/zep_local",
     "judge_prompt_sensitivity": "results/judge_prompt_sensitivity"

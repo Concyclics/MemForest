@@ -1,0 +1,53 @@
+{
+  "status": "complete",
+  "date": "2026-07-22",
+  "dataset": "LongMemEval-S",
+  "questions": 500,
+  "temporal_questions": 133,
+  "memory_state": "retained corrected Mem0 Qwen3-30B stores; no rebuild",
+  "cutoffs": [50, 200],
+  "answer_model": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+  "answer_temperature": 0,
+  "judge_model": "deepseek-chat",
+  "judge_temperature": 0,
+  "votes_per_answer_and_arm": 3,
+  "judge_arms": {
+    "strict": "paper appendix prompt",
+    "public": "Mem0 memory-benchmarks LongMemEval prompt at 7ba1bd330f6ef6acdc751b6e1f82ac8af0568873"
+  },
+  "validation": {
+    "answers": 1000,
+    "judge_calls": 6000,
+    "answer_errors": 0,
+    "judge_errors": 0,
+    "top10_set_exact_questions": 495,
+    "minimum_top10_set_overlap": 9,
+    "top20_set_exact_questions": 483,
+    "minimum_top20_set_overlap": 18,
+    "shared_memory_content_matches": true,
+    "strict_public_majority_disagreements": 40,
+    "public_only_acceptances": 34,
+    "strict_only_acceptances": 6
+  },
+  "accuracy": {
+    "top50": {
+      "strict_overall": 0.466,
+      "public_overall": 0.494,
+      "strict_temporal": 0.37593984962406013,
+      "public_temporal": 0.41353383458646614
+    },
+    "top200": {
+      "strict_overall": 0.458,
+      "public_overall": 0.486,
+      "strict_temporal": 0.37593984962406013,
+      "public_temporal": 0.38345864661654133
+    }
+  },
+  "sha256": {
+    "accuracy_summary.csv": "253399d5f7a8380582b6830bc7ec696314388cfcc0754d0c3e9f86859fe5272d",
+    "context_summary.csv": "d93995d88a930476d31c7202c81ba3f7589290a7cd2856b2e0bb312813850793",
+    "paired_comparisons.csv": "02f510dc336f6c89b66fe8ebcb72dd3c17a011f0bb81bf04fd37401f40f4ebfe",
+    "per_question_majority.csv": "5a2b067749f206f5cf4314667a6790fb9dd043f23ff790d641afa0cfa36d52bf",
+    "run_mem0_budget_judge_control.py": "f7ff4ad17e6659950e3a8e1bda66a317aea72758a6738ef1f4ca018cc1c4e379"
+  }
+}

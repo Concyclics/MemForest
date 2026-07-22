@@ -1,0 +1,3 @@
+cutoff,rows,mean_context_chars,mean_prompt_tokens,mean_completion_tokens,max_prompt_tokens,stores_exhausted
+50,500,4367.008,2284.322,20.39,2543,0
+200,500,18102.85,7919.126,19.718,8384,40

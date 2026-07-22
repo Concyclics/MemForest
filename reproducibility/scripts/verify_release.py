@@ -40,6 +40,68 @@ def check_mem0() -> None:
         observed = float(summary["overall"]["pass@1"])
         assert abs(observed - sampled_pass1) < 1e-12, (lane, observed)
 
+    profile = read_json(
+        ROOT / "results" / "mem0_corrected" / "retrieval_budget_store_profile.json"
+    )
+    assert profile["validation"] == {
+        "conversations": 500,
+        "duplicate_conversation_point_keys": 0,
+        "memory_points": 121594,
+        "multi_user_conversations": 0,
+    }
+    assert abs(float(profile["overall"]["mean"]) - 243.188) < 1e-12
+    top200 = profile["overall"]["budgets"]["200"]
+    assert top200["questions_retrieving_all_memories"] == 40
+    assert abs(float(top200["mean_store_fraction"]) - 0.8311433156049872) < 1e-12
+
+    control_root = ROOT / "results" / "mem0_corrected" / "top50_top200_control"
+    control = read_json(control_root / "manifest.json")
+    assert control["validation"]["answers"] == 1000
+    assert control["validation"]["judge_calls"] == 6000
+    assert control["validation"]["answer_errors"] == 0
+    assert control["validation"]["judge_errors"] == 0
+    assert control["validation"]["strict_public_majority_disagreements"] == 40
+    with (control_root / "accuracy_summary.csv").open(encoding="utf-8", newline="") as handle:
+        accuracy_rows = list(csv.DictReader(handle))
+    assert len(accuracy_rows) == 8
+    accuracy = {
+        (int(row["cutoff"]), row["judge_arm"], row["scope"]): float(row["accuracy"])
+        for row in accuracy_rows
+    }
+    assert accuracy[(50, "strict", "overall")] == 0.466
+    assert accuracy[(50, "public", "overall")] == 0.494
+    assert accuracy[(200, "strict", "overall")] == 0.458
+    assert accuracy[(200, "public", "overall")] == 0.486
+    with (control_root / "per_question_majority.csv").open(encoding="utf-8", newline="") as handle:
+        majority_rows = list(csv.DictReader(handle))
+    assert len(majority_rows) == 2000
+    assert Counter((int(row["cutoff"]), row["judge_arm"]) for row in majority_rows) == {
+        (50, "strict"): 500,
+        (50, "public"): 500,
+        (200, "strict"): 500,
+        (200, "public"): 500,
+    }
+    with (control_root / "paired_comparisons.csv").open(encoding="utf-8", newline="") as handle:
+        paired_rows = list(csv.DictReader(handle))
+    assert len(paired_rows) == 8
+    budget_rows = [
+        row for row in paired_rows
+        if row["comparison"] == "top200_minus_top50" and row["scope"] == "overall"
+    ]
+    assert len(budget_rows) == 2
+    assert all(float(row["delta"]) == -0.008 for row in budget_rows)
+    judge_rows = [
+        row for row in paired_rows
+        if row["comparison"] == "public_minus_strict" and row["scope"] == "overall"
+    ]
+    assert len(judge_rows) == 2
+    assert all(float(row["delta"]) == 0.028 for row in judge_rows)
+    with (control_root / "context_summary.csv").open(encoding="utf-8", newline="") as handle:
+        contexts = {int(row["cutoff"]): row for row in csv.DictReader(handle)}
+    assert abs(float(contexts[50]["mean_prompt_tokens"]) - 2284.322) < 1e-12
+    assert abs(float(contexts[200]["mean_prompt_tokens"]) - 7919.126) < 1e-12
+    assert int(contexts[200]["stores_exhausted"]) == 40
+
 
 def check_gemma() -> None:
     root = ROOT / "results" / "gemma"
@@ -99,12 +161,43 @@ def check_baseline_implementations() -> None:
             assert path.is_file() and path.stat().st_size > 0, (method, path)
 
 
+def check_semantic_audit() -> None:
+    root = ROOT / "results" / "semantic_audit"
+    summary = read_json(root / "semantic_audit_summary.json")
+    assert summary["provenance"]["human_gold"] is False
+    assert summary["temporal"] == {
+        "rows": 79,
+        "high_confidence": 77,
+        "provisional_fully_upheld": 33,
+        "author_signoff_required": 46,
+        "type_exact_match": 46,
+        "gold_ids_exact_match": 65,
+        "conflict_ids_exact_match": 65,
+    }
+    entity = summary["entity_routing"]
+    assert entity["rows"] == 200
+    assert entity["active_key_rows"] == 86
+    assert entity["active_precision_pass"] == 84
+    assert entity["active_full_recall_pass"] == 5
+    judge = summary["judge_disagreements"]
+    assert judge["rows"] == 40
+    assert judge["codex_prefers_strict"] == 33
+    assert judge["codex_prefers_public"] == 7
+    assert judge["author_signoff_required"] == 8
+    expected_raw = {"temporal": 79, "entity": 200, "judge": 40}
+    for name, expected in expected_raw.items():
+        rows = list(read_jsonl(root / "raw" / f"{name}_independent_audit.jsonl"))
+        assert len(rows) == expected
+        assert not any(row.get("error") for row in rows)
+
+
 def main() -> None:
     check_baseline_implementations()
     check_mem0()
     check_gemma()
     check_zep()
     check_judge_sensitivity()
+    check_semantic_audit()
     print("revision release verification: PASS")
 
 

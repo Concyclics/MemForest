@@ -17,6 +17,57 @@ For Qwen3-30B, 47.7% is the rounded mean of three judge-run accuracies
 `[47.6%, 47.6%, 47.8%]`; the majority-label count stored in the same artifact is
 238/500 (47.6%).
 
+### Corrected Mem0 store occupancy
+
+The retained Qwen3-30B stores contain 121,594 memory points across 500 isolated
+LongMemEval-S conversations. A conversation has 243.2 memories on average and
+240 at the median (range 156--339). The table reports the fraction of the full
+per-question memory store exposed by each retrieval budget, before any context
+window truncation:
+
+| Subset | Mean memories | Median memories | Top-10 share | Top-50 share | Top-200 share | Stores exhausted by top-200 |
+|---|---:|---:|---:|---:|---:|---:|
+| All 500 | 243.2 | 240 | 4.18% | 20.92% | 83.11% | 40/500 (8.0%) |
+| Temporal (133) | 244.9 | 244 | 4.15% | 20.73% | 82.48% | 8/133 (6.0%) |
+
+Thus top-200 is close to exhaustive recall for this corrected local Mem0
+snapshot and is not comparable to the common final top-k=10 main table. This
+occupancy result alone does not establish an accuracy gain; the controlled
+accuracy sweep freezes the memory state and varies only retrieval/answer
+context budget. File:
+[`results/mem0_corrected/retrieval_budget_store_profile.json`](results/mem0_corrected/retrieval_budget_store_profile.json).
+
+### Fixed-store top-50/top-200 control
+
+The retained corrected Qwen3-30B stores were queried once to top-200 and sliced
+at top-50. The same Mem0 answer path was used at both cutoffs, followed by
+three `deepseek-chat` votes under both the appendix strict judge and the public
+LongMemEval prompt from `memory-benchmarks` commit `7ba1bd3`.
+
+| Cutoff | Strict overall | Public overall | Strict temporal | Public temporal | Mean prompt tokens |
+|---:|---:|---:|---:|---:|---:|
+| 50 | 46.60% | 49.40% | 37.59% | 41.35% | 2,284 |
+| 200 | 45.80% | 48.60% | 37.59% | 38.35% | 7,919 |
+
+The public prompt adds 2.80 points overall at both cutoffs. Top-200 minus
+top-50 is -0.80 points overall under either judge, with paired 95% intervals
+crossing zero. Thus this local control confirms judge sensitivity but does not
+reproduce the managed v3 snapshot's positive budget delta or absolute score.
+Files:
+[`results/mem0_corrected/top50_top200_control/`](results/mem0_corrected/top50_top200_control/).
+
+### Independent semantic audit
+
+The final evidence-governance audit covers all 79 provisional temporal evidence
+mappings, 200 stratified entity-routing facts, and all 40 strict/public judge
+disagreements. Only 33/79 provisional temporal rows were fully upheld, so the
+revision omits exact fragmentation precision from that mapping. Among 86 rows
+with active entity keys, 84 pass semantic precision and five cover every salient
+entity. Independent disagreement review prefers strict on 33/40 and public on
+7/40; eight subjective boundary rows remain separated for optional author
+sign-off. These are model-assisted independent reviews, not human gold. Files:
+[`results/semantic_audit/`](results/semantic_audit/).
+
 ## Zep Local full-system baseline
 
 | Backbone | LongMemEval-S | LME temporal | LoCoMo cat. 1-4 | LoCoMo full |
