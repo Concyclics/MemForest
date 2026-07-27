@@ -1,6 +1,26 @@
 # Revision result index
 
-## Corrected Mem0 LongMemEval-S
+## Final three-backbone public-judge main results
+
+The final main-table regrade freezes retrieval and generated answers, applies
+`deepseek-v4-flash` once per row, and uses the public Mem0-family judge:
+LongMemEval commit `7ba1bd3` and tuned LoCoMo commit `edcd6f1`. All methods
+retain final top-10 outputs. Validation covers 59,664/59,664 rows with zero
+unresolved labels.
+
+| Backbone | LongMemEval leader | MemForest | LoCoMo Cat.1-4 leader | MemForest |
+|---|---:|---:|---:|---:|
+| Qwen3-4B | MemForest | 72.60% | EverMemOS 79.22% | 78.12% |
+| Qwen3-30B | MemForest | 81.80% | EverMemOS 84.22% | 84.09% |
+| Gemma 4 12B | MemForest-Embed 78.40% | Agent 77.80% | EverMemOS 88.57% | Agent 82.66% |
+
+The complete method/category matrix, per-question labels, input manifest, and
+validation are in
+[`results/public_judge_three_backbone/`](results/public_judge_three_backbone/).
+The public LoCoMo prompt assumes a non-empty gold answer, so category 5 retains
+the strict answerability judge and is not folded into the Cat.1-4 main score.
+
+## Corrected Mem0 LongMemEval-S strict-judge diagnostic
 
 | Backbone | Questions | Overall pass@1 | Temporal pass@1 | Submitted overall | Submitted temporal |
 |---|---:|---:|---:|---:|---:|
@@ -56,7 +76,7 @@ reproduce the managed v3 snapshot's positive budget delta or absolute score.
 Files:
 [`results/mem0_corrected/top50_top200_control/`](results/mem0_corrected/top50_top200_control/).
 
-### Independent semantic audit
+### Independent and author-adjudicated semantic audit
 
 The final evidence-governance audit covers all 79 provisional temporal evidence
 mappings, 200 stratified entity-routing facts, and all 40 strict/public judge
@@ -77,7 +97,16 @@ counts strengthen the bounded diagnostics but do not convert model-assisted
 labels into human gold. Files:
 [`results/semantic_audit/expanded/`](results/semantic_audit/expanded/).
 
-## Zep Local full-system baseline
+Authors subsequently adjudicated all 87 flagged temporal mappings, all three
+active-routing precision exceptions, and all 12 judge-policy boundary cases.
+The final hybrid diagnostic retains 231 supported temporal mappings and
+records 18 exclusions with reasons. It reports 124 PASS, one PARTIAL, and two
+FAIL active entity-precision decisions; active recall is 9 PASS, 114 PARTIAL,
+and four FAIL. These remain hybrid author-adjudicated labels, not pure human
+gold. Files:
+[`results/semantic_audit/author_adjudicated/`](results/semantic_audit/author_adjudicated/).
+
+## Zep Local full-system baseline under the strict judge
 
 | Backbone | LongMemEval-S | LME temporal | LoCoMo cat. 1-4 | LoCoMo full |
 |---|---:|---:|---:|---:|
@@ -89,7 +118,7 @@ Each row contains 500 LongMemEval-S and 1,986 LoCoMo questions. All six cells
 completed with zero judge errors. Files:
 [`results/zep_local/`](results/zep_local/).
 
-## Gemma cross-family matrix
+## Gemma cross-family matrix under the strict judge
 
 Under the appendix DeepSeek judge, all seven methods have complete 500-question
 LongMemEval-S and 1,540-question LoCoMo category 1-4 coverage. Selected rows:

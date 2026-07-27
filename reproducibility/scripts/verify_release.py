@@ -142,6 +142,69 @@ def check_judge_sensitivity() -> None:
     assert manifest["validation"]["judge_errors"] == 0
 
 
+def check_public_judge_three_backbone() -> None:
+    root = ROOT / "results" / "public_judge_three_backbone"
+    validation = read_json(root / "validation.json")
+    assert validation["expected_inputs"] == 59664
+    assert validation["complete_question_rows"] == 59664
+    assert validation["unresolved_question_rows"] == 0
+    assert validation["all_question_rows_complete"] is True
+
+    manifest = read_json(root / "input_manifest.json")
+    assert manifest["judge_model"] == "deepseek-v4-flash"
+    assert manifest["frozen_inputs"] == 59664
+    assert manifest["api_key_recorded"] is False
+
+    with (root / "per_question_labels.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        labels = list(csv.DictReader(handle))
+    assert len(labels) == 59664
+
+    with (root / "summary.csv").open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    values = {
+        (row["model"], row["method"], row["benchmark"], row["slice"]):
+        float(row["public_accuracy"])
+        for row in rows
+    }
+    expected = {
+        ("qwen3_4b", "memforest", "longmemeval", "overall"): 0.726,
+        ("qwen3_30b", "memforest", "longmemeval", "overall"): 0.818,
+        ("gemma4_12b", "memforest_embed", "longmemeval", "overall"): 0.784,
+        ("qwen3_4b", "memforest", "locomo", "cat1-4"): 0.7811688311688312,
+        ("qwen3_30b", "memforest", "locomo", "cat1-4"): 0.8409090909090909,
+        ("gemma4_12b", "evermemos", "locomo", "cat1-4"): 0.8857142857142857,
+    }
+    for key, expected_value in expected.items():
+        assert abs(values[key] - expected_value) < 1e-12, (key, values[key])
+
+
+def check_author_adjudicated_audit() -> None:
+    root = ROOT / "results" / "semantic_audit" / "author_adjudicated"
+    summary = read_json(root / "summary.json")
+    assert summary["temporal"]["source_rows"] == 249
+    assert summary["temporal"]["retained_rows"] == 231
+    assert summary["temporal"]["excluded_rows"] == 18
+    assert summary["entity"]["rows"] == 300
+    assert summary["entity"]["active_precision"] == {
+        "FAIL": 2,
+        "PARTIAL": 1,
+        "PASS": 124,
+    }
+    assert summary["judge"]["rows"] == 120
+
+    expected_rows = {
+        "temporal_labels_231.csv": 231,
+        "temporal_excluded_18.csv": 18,
+        "entity_routing_300.csv": 300,
+        "judge_calibration_120.csv": 120,
+    }
+    for name, expected in expected_rows.items():
+        with (root / name).open(encoding="utf-8", newline="") as handle:
+            assert sum(1 for _ in csv.DictReader(handle)) == expected
+
+
 def check_baseline_implementations() -> None:
     manifest = read_json(ROOT / "manifests" / "baseline_versions.json")
     expected = {
@@ -223,7 +286,9 @@ def main() -> None:
     check_gemma()
     check_zep()
     check_judge_sensitivity()
+    check_public_judge_three_backbone()
     check_semantic_audit()
+    check_author_adjudicated_audit()
     print("revision release verification: PASS")
 
 

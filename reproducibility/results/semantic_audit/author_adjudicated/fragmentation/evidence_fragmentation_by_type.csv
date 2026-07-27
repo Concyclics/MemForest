@@ -1,0 +1,9 @@
+label_provenance,benchmark,manual_temporal_type,n_questions,mapping_complete_n,mapping_complete_rate,single_tree_cover_rate,specific_fragmentation_rate,cross_scope_required_rate,mean_max_single_tree_gold_fraction
+hybrid_author_adjudicated,locomo,current-vs-old,1,1,1.0,1.0,0.0,0.0,1.0
+hybrid_author_adjudicated,locomo,duration,5,5,1.0,1.0,0.2,0.0,0.9
+hybrid_author_adjudicated,locomo,historical-state,123,123,1.0,0.99187,0.02439,0.0,0.990515
+hybrid_author_adjudicated,locomo,ordering,1,1,1.0,1.0,0.0,0.0,1.0
+hybrid_author_adjudicated,longmemeval,current-vs-old,6,6,1.0,1.0,0.166667,0.0,0.916667
+hybrid_author_adjudicated,longmemeval,duration,51,51,1.0,1.0,0.333333,0.0,0.846405
+hybrid_author_adjudicated,longmemeval,historical-state,17,17,1.0,1.0,0.058824,0.0,0.964706
+hybrid_author_adjudicated,longmemeval,ordering,27,27,1.0,1.0,0.666667,0.0,0.728704

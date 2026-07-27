@@ -1,0 +1,3 @@
+label_provenance,benchmark,n_questions,mapping_complete_n,mapping_complete_rate,single_tree_cover_rate,specific_fragmentation_rate,cross_scope_required_rate,mean_max_single_tree_gold_fraction
+hybrid_author_adjudicated,locomo,130,130,1.0,0.992308,0.030769,0.0,0.987179
+hybrid_author_adjudicated,longmemeval,101,101,1.0,1.0,0.366337,0.0,0.839026

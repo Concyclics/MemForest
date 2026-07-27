@@ -1,0 +1,18 @@
+{
+  "protocol_id": "three_backbone_full_public_mem0_judge_regrade_v1_20260725",
+  "frozen_inputs": 59664,
+  "expected_inputs": 59664,
+  "repetitions": 1,
+  "expected_calls": 59664,
+  "observed_unique_calls": 59664,
+  "raw_call_rows": 62726,
+  "successful_call_rows": 59664,
+  "historical_error_attempt_rows": 3062,
+  "complete_question_rows": 59664,
+  "unresolved_question_rows": 0,
+  "question_rows": 59664,
+  "all_question_rows_complete": true,
+  "prompt_tokens": 52511559,
+  "completion_tokens": 2119420,
+  "median_call_sec": 1.115753980120644
+}

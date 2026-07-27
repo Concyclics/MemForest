@@ -1,0 +1,54 @@
+{
+  "entity": {
+    "active_precision": {
+      "FAIL": 2,
+      "PARTIAL": 1,
+      "PASS": 124
+    },
+    "active_recall": {
+      "FAIL": 4,
+      "PARTIAL": 114,
+      "PASS": 9
+    },
+    "active_rows": 127,
+    "rows": 300
+  },
+  "judge": {
+    "agreement_preference": {
+      "both": 78,
+      "neither": 2
+    },
+    "agreement_rows": 80,
+    "disagreement_preference": {
+      "public": 6,
+      "strict": 34
+    },
+    "disagreement_rows": 40,
+    "public_matches_final": 84,
+    "rows": 120,
+    "strict_matches_final": 112
+  },
+  "temporal": {
+    "benchmark_counts": {
+      "locomo": 130,
+      "longmemeval": 101
+    },
+    "excluded_rows": 18,
+    "provenance_counts": {
+      "author_accepted_independent": 18,
+      "author_accepted_proposed": 1,
+      "author_custom": 50,
+      "stable_model_assisted": 162
+    },
+    "retained_rows": 231,
+    "rows_with_conflicts": 37,
+    "rows_with_multiple_gold_facts": 122,
+    "source_rows": 249,
+    "type_counts": {
+      "current-vs-old": 7,
+      "duration": 56,
+      "historical-state": 140,
+      "ordering": 28
+    }
+  }
+}

@@ -24,6 +24,14 @@ repository rather than to a separate anonymized archive.
   reruns the frozen-store top-50/top-200 answer and dual-judge control.
 - [`results/semantic_audit/`](results/semantic_audit/): frozen source sheets,
   independent review records, author-signoff queues, and aggregate decisions.
+- [`results/semantic_audit/author_adjudicated/`](results/semantic_audit/author_adjudicated/):
+  final 249-row temporal, 300-row entity-routing, and 120-row judge-policy
+  author adjudication, including 231 retained temporal mappings and 18
+  documented exclusions.
+- [`results/public_judge_three_backbone/`](results/public_judge_three_backbone/):
+  complete 59,664-row public-judge regrade over three backbones, eight methods,
+  and both benchmarks; includes compact per-question labels, summary, manifest,
+  and validation.
 - [`scripts/run_independent_semantic_audit.py`](scripts/run_independent_semantic_audit.py):
   reruns the optional local Qwen semantic review.
 - [`scripts/summarize_independent_semantic_audit.py`](scripts/summarize_independent_semantic_audit.py):

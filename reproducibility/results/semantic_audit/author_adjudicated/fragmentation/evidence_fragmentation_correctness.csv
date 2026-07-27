@@ -1,0 +1,9 @@
+label_provenance,benchmark,method,fragmentation_bucket,n_questions,correct,accuracy
+hybrid_author_adjudicated,locomo,memtree_embed,multi_specific_tree,4,2,0.5
+hybrid_author_adjudicated,locomo,memtree_embed,single_specific_tree,126,96,0.761905
+hybrid_author_adjudicated,locomo,memtree_planner,multi_specific_tree,3,1,0.333333
+hybrid_author_adjudicated,locomo,memtree_planner,single_specific_tree,102,84,0.823529
+hybrid_author_adjudicated,longmemeval,memtree_embed,multi_specific_tree,37,25,0.675676
+hybrid_author_adjudicated,longmemeval,memtree_embed,single_specific_tree,64,50,0.78125
+hybrid_author_adjudicated,longmemeval,memtree_planner,multi_specific_tree,37,25,0.675676
+hybrid_author_adjudicated,longmemeval,memtree_planner,single_specific_tree,64,50,0.78125

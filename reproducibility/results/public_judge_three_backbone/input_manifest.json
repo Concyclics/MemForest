@@ -1,0 +1,156 @@
+{
+  "protocol_id": "three_backbone_full_public_mem0_judge_regrade_v1_20260725",
+  "models": [
+    "qwen3_4b",
+    "qwen3_30b",
+    "gemma4_12b"
+  ],
+  "methods": [
+    "memforest",
+    "memforest_embed",
+    "evermemos",
+    "lightmem",
+    "memoryos",
+    "mempalace",
+    "mem0",
+    "zep_local"
+  ],
+  "benchmarks": {
+    "longmemeval": 500,
+    "locomo": 1986
+  },
+  "frozen_inputs": 59664,
+  "full_expected_inputs": 59664,
+  "judge_model": "deepseek-v4-flash",
+  "judge_url": "https://api.deepseek.com/v1",
+  "temperature": 0,
+  "thinking": "disabled",
+  "repetitions": 1,
+  "workers": 2048,
+  "api_key_recorded": false,
+  "prompts": {
+    "longmemeval": {
+      "commit": "7ba1bd330f6ef6acdc751b6e1f82ac8af0568873",
+      "repository_path": "benchmarks/longmemeval/prompts.py",
+      "local_source": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/longmemeval_initial_7ba1bd330f6e_judge_prompt.txt",
+      "sha256": "f4f378ba0a4c671d565cd14db172a99fb654e1446b645391da7883c7cd178a44",
+      "output_policy": "yes_no"
+    },
+    "locomo": {
+      "commit": "edcd6f1d42400837b1fcb6997716f1769dc51a37",
+      "repository_path": "benchmarks/locomo/prompts.py",
+      "local_source": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/locomo_tuned_edcd6f1d4240_judge_prompt.txt",
+      "sha256": "d248e056d993725e28fba8d16ca7081f0b59deae272ef294f3c6b00d48eac02b",
+      "output_policy": "json_label"
+    }
+  },
+  "source_files": [
+    {
+      "path": "EverMemOS/evaluation/results/longmemeval-evermemos_qwen30_full500_v1/answer_results.json",
+      "sha256": "57556e515c99c0f05009e9e65e78ccd9cdce0634b77dfbf48fe35d89fe6087a5",
+      "bytes": 7941525
+    },
+    {
+      "path": "EverMemOS/evaluation/results/mem0_fixed_longmemeval_full_30b_s128_20260617_r4_s128_lock_passk8_deepseek_20260617/per_question.jsonl",
+      "sha256": "b441480feda94b70d6b21cda263a7137a9162f4126506b16f81f710f5d92e5e0",
+      "bytes": 636823
+    },
+    {
+      "path": "EverMemOS/evaluation/results/mem0_fixed_longmemeval_full_4b_s128_20260617_r4_s128_lock_passk8_deepseek_20260617/per_question.jsonl",
+      "sha256": "4a95ff60b115a3a5a40d7ff49cd57bd8f46e5cd1536061820107e7d70657ed0b",
+      "bytes": 440866
+    },
+    {
+      "path": "MemForestSubmit/benchmark/locomo_per_question_30b.csv",
+      "sha256": "762d62aa33eccdbcbe229cf8c15c06063dde18778e16d8001b7b4773bee08487",
+      "bytes": 42161963
+    },
+    {
+      "path": "MemForestSubmit/benchmark/locomo_per_question_4b.csv",
+      "sha256": "2d79981b7960093f2e2393ea3dd4bfc98c9a447b7209f01e9aa37b29c8449689",
+      "bytes": 47316325
+    },
+    {
+      "path": "MemForestSubmit/benchmark/longmemeval_per_question_30b.csv",
+      "sha256": "b9798fe18acf61e62bef51db3097cfda7bf0aa0c9c3831f72f8f124d82ee856f",
+      "bytes": 24573434
+    },
+    {
+      "path": "MemForestSubmit/benchmark/longmemeval_per_question_4b.csv",
+      "sha256": "03aa56f9d908a8925b86f0b4ac1cb09350944a3b307b767352a6dae9b9e3d9a8",
+      "bytes": 29277419
+    },
+    {
+      "path": "gemma_8001_appendix_deepseek_judge_20260623/judged.jsonl",
+      "sha256": "ad27975dea918887a7f2f1309e67eba62b8818a682c5ec6482225a0f0591e7d6",
+      "bytes": 9833362
+    },
+    {
+      "path": "gemma_8001_appendix_deepseek_judge_20260623/records.jsonl",
+      "sha256": "ed656f0b60f2e49827a11db91dc89228f2aa7c846e3c6ca9b3c655733ce47a5c",
+      "bytes": 8193770
+    },
+    {
+      "path": "gemma_8001_cat5_runs/cat5_20260623/appendix_deepseek_judge_cat5/judged.jsonl",
+      "sha256": "1d0a236dcdfc785ee7eedaca76ea09b3de04a4fc531f5a86ba62c93a0f50b070",
+      "bytes": 2033125
+    },
+    {
+      "path": "gemma_8001_cat5_runs/cat5_20260623/appendix_deepseek_judge_cat5/records.jsonl",
+      "sha256": "4140c48f8ead9caa7e6b91cdf8ab4b9872975febc09af3d38d30c0ba86ca3638",
+      "bytes": 1681509
+    },
+    {
+      "path": "qwen3_30b_8001_pass8_deepseek_judge_appendix_20260624/judged.jsonl",
+      "sha256": "c193e69e3a5e4fbca17c374083b19b75bae989fa6b28ed5a47a5f44b63e9046a",
+      "bytes": 216457281
+    },
+    {
+      "path": "qwen3_30b_8001_pass8_deepseek_judge_appendix_20260624/records.jsonl",
+      "sha256": "ae590828431349f8464f8731767dfb73596e3c9d0d64887c3334ee4a197e6872",
+      "bytes": 195322373
+    },
+    {
+      "path": "qwen3_4b_pass8_deepseek_judge_appendix_20260625_fixed_lightmem_lme/judged.jsonl",
+      "sha256": "48ea5a1c557d4008b35f65be2ea7bc07714744598fe3b27ed58ee6091bbd33b9",
+      "bytes": 222294384
+    },
+    {
+      "path": "qwen3_4b_pass8_deepseek_judge_appendix_20260625_fixed_lightmem_lme/records.jsonl",
+      "sha256": "27f946f85389e46ec68f65308684351b5af6afa9783147bf8ab96647e74e49ff",
+      "bytes": 201180372
+    },
+    {
+      "path": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/locomo_tuned_edcd6f1d4240_judge_prompt.txt",
+      "sha256": "16bed642e415fb8f5c8550cd733dcf19985ad157427e40ab5dac209e7b837a56",
+      "bytes": 2995
+    },
+    {
+      "path": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/longmemeval_initial_7ba1bd330f6e_judge_prompt.txt",
+      "sha256": "a585ba411e4251e042dea8e8e5258554db62c982219f6096531d844b4effdc7d",
+      "bytes": 4994
+    },
+    {
+      "path": "runs/zep_local_2x3_20260718_185922/judge_qwen30b_gemma_reference_date/judged.jsonl",
+      "sha256": "529c8a9c1fc2f18c642b135b4ce876fd6c163e63d42af012721f142c9285ad5e",
+      "bytes": 5169360
+    },
+    {
+      "path": "runs/zep_local_2x3_20260718_185922/judge_qwen30b_gemma_reference_date/records.jsonl",
+      "sha256": "9c299cbe1348fbc02b9b8132f4e9cf3436b8fb8012a628170f086860c4b93cd0",
+      "bytes": 4412584
+    },
+    {
+      "path": "runs/zep_local_2x3_20260718_185922/judge_qwen4b_reference_date/judged.jsonl",
+      "sha256": "97d11e4470899e37a2cacc24e596c50740992235362a81b325df442650ab2419",
+      "bytes": 2747296
+    },
+    {
+      "path": "runs/zep_local_2x3_20260718_185922/judge_qwen4b_reference_date/records.jsonl",
+      "sha256": "f99547ae6a62855bf668298af74453b92a2f732359f99d7cedd4f4d397870c85",
+      "bytes": 2369696
+    }
+  ],
+  "input_sha256": "e7e7ef3f444e068e85613f41964e4ba213b5ea137a1009a5f6839c18dcefd868",
+  "scope_note": "Frozen-answer regrade only. Retrieval, memory construction, and answer generation are not rerun. Qwen MemForest-Embed uses the separately recorded complete sample-0 rerun; corrected Qwen Mem0 LongMemEval replaces the submitted timestamp-bug answers."
+}

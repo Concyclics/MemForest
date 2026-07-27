@@ -22,14 +22,15 @@
     "gemma": "google/gemma-4-12B-it",
     "embedding": "Qwen/Qwen3-Embedding-0.6B",
     "embedding_dimension": 1024,
-    "judge": "deepseek-chat"
+    "judge": "deepseek-v4-flash"
   },
   "policies": {
     "main_final_retrieval_k": 10,
     "retrieval_budget_diagnostic_k": [50, 200],
     "timestamp": "benchmark event/session time propagated through ingestion and answer context",
-    "answer": "recommended schema-aware path for primary rows; shared instruction only as sensitivity",
-    "judge": "appendix prompt; zero-error completeness required"
+    "answer": "schema-aware path for primary rows; shared instruction only as sensitivity",
+    "judge": "public Mem0-family prompt for main tables; strict prompt in appendix; zero unresolved rows required",
+    "locomo_scope": "categories 1-4 under public judge; category 5 under strict answerability judge"
   },
   "results": {
     "mem0_corrected": "results/mem0_corrected",
@@ -38,7 +39,9 @@
     "semantic_audit": "results/semantic_audit",
     "gemma": "results/gemma",
     "zep_local": "results/zep_local",
-    "judge_prompt_sensitivity": "results/judge_prompt_sensitivity"
+    "judge_prompt_sensitivity": "results/judge_prompt_sensitivity",
+    "public_judge_three_backbone": "results/public_judge_three_backbone",
+    "author_adjudicated_semantic_audit": "results/semantic_audit/author_adjudicated"
   },
   "implementations": {
     "index": "baselines/README.md",
