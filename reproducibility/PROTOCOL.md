@@ -39,27 +39,28 @@ so the experiment changes the generative family rather than both model roles.
 
 ## Judge
 
-The revision uses `deepseek-chat` with the appendix prompts and temperature 0.
-Judge output is parsed as `CORRECT` or `WRONG`; failures are retained and must
-be zero before a complete result is reported. Prompt text and hashes are stored
-beside the corresponding result files.
-The executable judge is released at
-[`evaluation/unified_deepseek_judge.py`](evaluation/unified_deepseek_judge.py).
+The main tables use one fixed `deepseek-v4-flash` judge call per frozen answer,
+temperature 0, and thinking disabled. LongMemEval-S uses the released Mem0
+prompt at `memory-benchmarks` commit `7ba1bd3`; LoCoMo categories 1--4 use the
+tuned released prompt at commit `edcd6f1`. Prompt hashes and source paths are
+recorded in
+[`results/public_judge_three_backbone/input_manifest.json`](results/public_judge_three_backbone/input_manifest.json).
+Judge output is normalized to `CORRECT` or `WRONG`; all 59,664 expected labels
+must be present and unresolved rows must be zero.
 
-Primary tables report one answer per question with three judge calls and the
-mean accuracy across judge repetitions. The corrected 30B run has repetition
-accuracies `[0.476, 0.476, 0.478]`, whose mean is 0.476666 and is reported as
-47.7%; its majority-label count is 238/500 (47.6%). Corrected
-Mem0 additionally releases pass@1-8 with eight independently sampled answers
-(`temperature=0.7`, `top_p=0.95`) and the standard cumulative pass@k definition:
-a question is correct at `k` when any of its first `k` samples is judged
-correct. The first sample of this stochastic pass@k run is not the primary
-table's separately generated answer, so its pass@1 can differ slightly.
+Older `deepseek-chat` three-vote results are retained only for the strict-judge,
+pass@k, and retrieval-budget diagnostics. They are not the source of the revised
+main tables. Corrected Mem0 additionally releases pass@1--8 with eight sampled
+answers (`temperature=0.7`, `top_p=0.95`) and the standard cumulative pass@k
+definition. The executable strict/sensitivity judge is released at
+[`evaluation/unified_deepseek_judge.py`](evaluation/unified_deepseek_judge.py).
 
 ## Reporting boundaries
 
 - The original submission CSVs are preserved as an immutable audit snapshot.
 - The corrected Mem0 rows replace the submitted Mem0 rows.
+- Qwen MemForest-Embed uses a protocol-matched rerun with native top-10 tree
+  browsing, full selected-unit expansion, and the default answer prompt.
 - The permissive-judge and shared-answer runs are sensitivity diagnostics, not
   replacement leaderboard values.
 - Zep Local is a reproducible local architecture-level baseline, not a claim

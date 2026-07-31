@@ -7,8 +7,22 @@
     "longmemeval_reference_date": "question_date from benchmark item",
     "primary_answer_policy": "released or recommended schema-aware answer path",
     "sensitivity_answer_policy": "shared_strong_v1 instruction only",
-    "judge_model": "deepseek-chat",
-    "judge_temperature": 0.0
+    "judge_model": "deepseek-v4-flash",
+    "judge_temperature": 0.0,
+    "judge_thinking": "disabled",
+    "judge_repetitions": 1,
+    "longmemeval_public_prompt_commit": "7ba1bd330f6ef6acdc751b6e1f82ac8af0568873",
+    "locomo_public_prompt_commit": "edcd6f1d42400837b1fcb6997716f1769dc51a37"
+  },
+  "qwen_memforest_embed_main": {
+    "protocol_id": "qwen_memforest_embed_native_top10_full_expand_v2_20260731",
+    "retrieval_unit": "memtree_browse_unit",
+    "native_top_k": 10,
+    "context_expansion": "full",
+    "answer_prompt": "memforest_default_v1",
+    "judge_model": "deepseek-v4-flash",
+    "judge_repetitions": 1,
+    "released_records": "results/qwen_embed_main_protocol"
   },
   "mem0_corrected": {
     "base_commit": "4642a1d6e372e985fff9683070b0127bf6d77621",

@@ -41,6 +41,7 @@
     "zep_local": "results/zep_local",
     "judge_prompt_sensitivity": "results/judge_prompt_sensitivity",
     "public_judge_three_backbone": "results/public_judge_three_backbone",
+    "qwen_embed_main_protocol": "results/qwen_embed_main_protocol",
     "author_adjudicated_semantic_audit": "results/semantic_audit/author_adjudicated"
   },
   "implementations": {

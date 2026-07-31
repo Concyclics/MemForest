@@ -1,0 +1,28 @@
+{
+  "protocol_id": "qwen_memforest_embed_native_top10_full_expand_v2_20260731",
+  "model": "qwen3_4b",
+  "answer_prompt": "memforest_default_v1",
+  "retrieval_unit": "memtree_browse_unit",
+  "native_top_k": 10,
+  "context_expansion": "full",
+  "max_context_chars": 60000,
+  "rows": 2486,
+  "sources": {
+    "longmemeval": {
+      "answer_source": "qwen4b/answers_pass8.jsonl",
+      "answer_sha256": "dfafa512ba2076e77be613c4c001f9efcb880b13e05fc4b97ba8411aa5adb26d",
+      "retrieval_source": "memforest_embed_longmemeval/per_question.jsonl",
+      "retrieval_sha256": "a4b1cc61670a4611870cd51a4ee56fd10e3a5dad5aa050aa2bc633c6373aee75",
+      "rows": 500
+    },
+    "locomo": {
+      "answer_source": "qwen4b/answers_pass8.jsonl",
+      "answer_sha256": "dfafa512ba2076e77be613c4c001f9efcb880b13e05fc4b97ba8411aa5adb26d",
+      "retrieval_source": "memforest_embed_locomo/per_question.jsonl",
+      "retrieval_sha256": "d7ebff6aacb18663c1f343c94962d08c85a47ade6d5f81e180a3985c907ca643",
+      "rows": 1986
+    }
+  },
+  "released_records": "qwen4b_records.jsonl",
+  "output_sha256": "4e8690ea507e7a4b24ca510552f2ef37f094b4dbe9a8a403352fe49bae0e2fda"
+}

@@ -32,6 +32,11 @@ repository rather than to a separate anonymized archive.
   complete 59,664-row public-judge regrade over three backbones, eight methods,
   and both benchmarks; includes compact per-question labels, summary, manifest,
   and validation.
+- [`results/qwen_embed_main_protocol/`](results/qwen_embed_main_protocol/):
+  protocol-matched Qwen MemForest-Embed answers, expansion metadata, source
+  hashes, and manifests for the four revised main-table cells.
+- [`scripts/build_qwen_embed_main_records.py`](scripts/build_qwen_embed_main_records.py):
+  normalization and protocol gates for the released Qwen Embed records.
 - [`scripts/run_independent_semantic_audit.py`](scripts/run_independent_semantic_audit.py):
   reruns the optional local Qwen semantic review.
 - [`scripts/summarize_independent_semantic_audit.py`](scripts/summarize_independent_semantic_audit.py):
@@ -55,9 +60,10 @@ python reproducibility/scripts/verify_release.py
 ```
 
 The check is API-free. It verifies expected question counts, judge-error counts,
-and the headline values cited by the response. Re-running answer generation or
-LLM judging requires the external baseline repositories and model services
-listed in [`BASELINES.md`](BASELINES.md).
+record hashes, Qwen Embed protocol fields, and the headline values cited by the
+response. Re-running answer generation or LLM judging requires the external
+baseline repositories and model services listed in
+[`BASELINES.md`](BASELINES.md).
 
 Every baseline implementation is indexed in
 [`baselines/README.md`](baselines/README.md). We publish complete patches

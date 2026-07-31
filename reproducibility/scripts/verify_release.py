@@ -4,12 +4,21 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def read_json(path: Path):
@@ -152,6 +161,8 @@ def check_public_judge_three_backbone() -> None:
 
     manifest = read_json(root / "input_manifest.json")
     assert manifest["judge_model"] == "deepseek-v4-flash"
+    assert manifest["protocol_id"] == "three_backbone_full_public_native_unit_v3_20260731"
+    assert manifest["repetitions"] == 1
     assert manifest["frozen_inputs"] == 59664
     assert manifest["api_key_recorded"] is False
 
@@ -172,12 +183,59 @@ def check_public_judge_three_backbone() -> None:
         ("qwen3_4b", "memforest", "longmemeval", "overall"): 0.726,
         ("qwen3_30b", "memforest", "longmemeval", "overall"): 0.818,
         ("gemma4_12b", "memforest_embed", "longmemeval", "overall"): 0.784,
+        ("qwen3_4b", "memforest_embed", "longmemeval", "overall"): 0.694,
+        ("qwen3_30b", "memforest_embed", "longmemeval", "overall"): 0.784,
         ("qwen3_4b", "memforest", "locomo", "cat1-4"): 0.7811688311688312,
         ("qwen3_30b", "memforest", "locomo", "cat1-4"): 0.8409090909090909,
+        ("qwen3_4b", "memforest_embed", "locomo", "cat1-4"): 0.7662337662337663,
+        ("qwen3_30b", "memforest_embed", "locomo", "cat1-4"): 0.8058441558441558,
         ("gemma4_12b", "evermemos", "locomo", "cat1-4"): 0.8857142857142857,
     }
     for key, expected_value in expected.items():
         assert abs(values[key] - expected_value) < 1e-12, (key, values[key])
+
+
+def check_qwen_embed_main_protocol() -> None:
+    root = ROOT / "results" / "qwen_embed_main_protocol"
+    expected = {
+        "qwen4b": {
+            "model": "qwen3_4b",
+            "sha256": "4e8690ea507e7a4b24ca510552f2ef37f094b4dbe9a8a403352fe49bae0e2fda",
+            "mean_facts": {"longmemeval": 153.076, "locomo": 222.2754279959718},
+        },
+        "qwen30b": {
+            "model": "qwen3_30b",
+            "sha256": "9cc06648007f324402d11cc5372518d3ef75f30e549ae6b44637418a4401cca2",
+            "mean_facts": {"longmemeval": 152.898, "locomo": 195.81772406847935},
+        },
+    }
+    for stem, lane in expected.items():
+        records_path = root / f"{stem}_records.jsonl"
+        manifest = read_json(root / f"{stem}_records.manifest.json")
+        assert manifest["protocol_id"] == "qwen_memforest_embed_native_top10_full_expand_v2_20260731"
+        assert manifest["model"] == lane["model"]
+        assert manifest["native_top_k"] == 10
+        assert manifest["context_expansion"] == "full"
+        assert manifest["answer_prompt"] == "memforest_default_v1"
+        assert manifest["rows"] == 2486
+        assert manifest["output_sha256"] == lane["sha256"]
+        assert sha256(records_path) == lane["sha256"]
+        rows = list(read_jsonl(records_path))
+        assert Counter(row["benchmark"] for row in rows) == {
+            "longmemeval": 500,
+            "locomo": 1986,
+        }
+        assert len({(row["benchmark"], row["qid"]) for row in rows}) == 2486
+        assert all(row["method"] == "memforest_embed_browse" for row in rows)
+        assert all(row["native_top_k"] == 10 for row in rows)
+        assert all(row["context_expansion"] == "full" for row in rows)
+        assert all(row["answer_prompt"] == "memforest_default_v1" for row in rows)
+        assert all(row["expanded_fact_count"] > 10 for row in rows)
+        assert all(0 < row["context_chars"] <= 60000 for row in rows)
+        for benchmark, expected_mean in lane["mean_facts"].items():
+            selected = [row for row in rows if row["benchmark"] == benchmark]
+            observed = sum(row["expanded_fact_count"] for row in selected) / len(selected)
+            assert abs(observed - expected_mean) < 1e-12, (stem, benchmark, observed)
 
 
 def check_author_adjudicated_audit() -> None:
@@ -286,6 +344,7 @@ def main() -> None:
     check_gemma()
     check_zep()
     check_judge_sensitivity()
+    check_qwen_embed_main_protocol()
     check_public_judge_three_backbone()
     check_semantic_audit()
     check_author_adjudicated_audit()

@@ -7,7 +7,9 @@
   (500 LongMemEval-S + 1,986 LoCoMo) = 59,664
 - Final valid labels: 59,664
 - Final unresolved rows: 0
-- Retrieval and answer generation were not rerun.
+- Retrieval and answer generation are frozen for all rows. Most rows reuse the
+  retained runs; Qwen MemForest-Embed uses the protocol-matched rerun described
+  below, and corrected Mem0 replaces the known timestamp-bug run.
 - The API key is not stored in the run artifacts.
 
 ## Prompt Provenance
@@ -18,19 +20,11 @@
   `edcd6f1d42400837b1fcb6997716f1769dc51a37`.
 - Temperature was 0 and thinking was disabled.
 
-## Recovery History
+## Complete Run
 
-- The first asynchronous pass used 2,048 in-flight requests and a
-  `max_tokens=128` output cap.
-- The host soft file-descriptor limit was initially 1,024, causing 3,046
-  connection failures. These rows were retried after raising the process limit
-  to 8,192; successful rows were not called again.
-- Sixteen LoCoMo responses remained unparseable because verbose reasoning was
-  truncated or the JSON was slightly malformed. They were called again with
-  `max_tokens=256` and an explicit-label JSON recovery parser.
-- `judged_calls.jsonl` retains failed attempts for auditability.
-  `validation.json` distinguishes historical failed attempts from final
-  unresolved rows.
+The final native-unit v3 run used 2,048 in-flight requests and completed all
+59,664 calls without a failed or unresolved row. `validation.json` records the
+exact counts; this compact release retains one final label per frozen answer.
 
 ## LoCoMo Reporting Boundary
 
@@ -41,15 +35,17 @@ categories 1--4 benchmark. Use the `cat1-4` rows in `summary.csv` for
 public-score alignment. Keep Category 5 under the strict answerability judge or
 report it separately.
 
-## Source Limitation
+## Qwen MemForest-Embed Provenance
 
-The original Qwen main-table answers for `MemForest (emb)` were not found in
-the retained submission artifacts. The Qwen `memforest_embed` rows in this run
-use the later complete shared-instruction sample-0 rerun. They are valid
-diagnostic regrades but are not pure judge-only replacements for the original
-67.6/78.4 LongMemEval-S and 61.4/66.9 LoCoMo table cells.
+The revised Qwen MemForest-Embed rows are a protocol-matched rerun rather than
+a judge-only relabel of the original submission. Qwen3-Embedding-0.6B performs
+native top-10 MemTree-unit browsing, selected units are fully expanded, and the
+default MemForest answer prompt and matching Qwen backbone generate one answer
+per question. The release contains 500 LongMemEval-S and 1,986 LoCoMo records
+for each Qwen backbone, including expansion counts and context lengths, under
+[`../qwen_embed_main_protocol/`](../qwen_embed_main_protocol/). Source answer
+and retrieval hashes are recorded in the adjacent manifests.
 
-All other Qwen rows align with the retained main-table answer artifacts, except
-that the intended corrected Mem0 LongMemEval answers replace the known
-reference-date-bug run. Gemma and Zep Local rows use their complete revision
-artifacts.
+All other Qwen rows align with retained main-table answer artifacts except that
+corrected Mem0 replaces the known reference-date-bug answers. Gemma and Zep
+Local rows use their complete revision artifacts.

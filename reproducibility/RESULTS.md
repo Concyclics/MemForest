@@ -8,15 +8,18 @@ LongMemEval commit `7ba1bd3` and tuned LoCoMo commit `edcd6f1`. All methods
 retain final top-10 outputs. Validation covers 59,664/59,664 rows with zero
 unresolved labels.
 
-| Backbone | LongMemEval leader | MemForest | LoCoMo Cat.1-4 leader | MemForest |
-|---|---:|---:|---:|---:|
-| Qwen3-4B | MemForest | 72.60% | EverMemOS 79.22% | 78.12% |
-| Qwen3-30B | MemForest | 81.80% | EverMemOS 84.22% | 84.09% |
-| Gemma 4 12B | MemForest-Embed 78.40% | Agent 77.80% | EverMemOS 88.57% | Agent 82.66% |
+| Backbone | LongMemEval Planner | LongMemEval Embed | LoCoMo Cat.1-4 Planner | LoCoMo Cat.1-4 Embed | Best baseline on LoCoMo |
+|---|---:|---:|---:|---:|---:|
+| Qwen3-4B | 72.60% | 69.40% | 78.12% | 76.62% | EverMemOS 79.22% |
+| Qwen3-30B | 81.80% | 78.40% | 84.09% | 80.58% | EverMemOS 84.22% |
+| Gemma-4-12B-IT | 77.80% | 78.40% | 82.66% | 81.69% | EverMemOS 88.57% |
 
 The complete method/category matrix, per-question labels, input manifest, and
 validation are in
 [`results/public_judge_three_backbone/`](results/public_judge_three_backbone/).
+The protocol-matched Qwen MemForest-Embed answer records and their source
+hashes are released separately in
+[`results/qwen_embed_main_protocol/`](results/qwen_embed_main_protocol/).
 The public LoCoMo prompt assumes a non-empty gold answer, so category 5 retains
 the strict answerability judge and is not folded into the Cat.1-4 main score.
 
@@ -118,7 +121,7 @@ Each row contains 500 LongMemEval-S and 1,986 LoCoMo questions. All six cells
 completed with zero judge errors. Files:
 [`results/zep_local/`](results/zep_local/).
 
-## Gemma cross-family matrix under the strict judge
+## Gemma cross-family matrix under the strict judge (diagnostic)
 
 Under the appendix DeepSeek judge, all seven methods have complete 500-question
 LongMemEval-S and 1,540-question LoCoMo category 1-4 coverage. Selected rows:
@@ -130,7 +133,9 @@ LongMemEval-S and 1,540-question LoCoMo category 1-4 coverage. Selected rows:
 | MemForest agent browse | 76.80% | 75.00% |
 | MemForest embedding browse | 77.20% | 73.83% |
 
-The result supports cross-family portability but not universal dominance.
+These older strict-prompt values are retained for protocol sensitivity and are
+not the public-prompt main-table values above. The result supports cross-family
+applicability but not universal dominance.
 Files: [`results/gemma/`](results/gemma/).
 
 ## Judge-prompt sensitivity

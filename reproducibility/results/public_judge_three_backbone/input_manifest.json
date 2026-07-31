@@ -1,5 +1,5 @@
 {
-  "protocol_id": "three_backbone_full_public_mem0_judge_regrade_v1_20260725",
+  "protocol_id": "three_backbone_full_public_native_unit_v3_20260731",
   "models": [
     "qwen3_4b",
     "qwen3_30b",
@@ -51,16 +51,6 @@
       "bytes": 7941525
     },
     {
-      "path": "EverMemOS/evaluation/results/mem0_fixed_longmemeval_full_30b_s128_20260617_r4_s128_lock_passk8_deepseek_20260617/per_question.jsonl",
-      "sha256": "b441480feda94b70d6b21cda263a7137a9162f4126506b16f81f710f5d92e5e0",
-      "bytes": 636823
-    },
-    {
-      "path": "EverMemOS/evaluation/results/mem0_fixed_longmemeval_full_4b_s128_20260617_r4_s128_lock_passk8_deepseek_20260617/per_question.jsonl",
-      "sha256": "4a95ff60b115a3a5a40d7ff49cd57bd8f46e5cd1536061820107e7d70657ed0b",
-      "bytes": 440866
-    },
-    {
       "path": "MemForestSubmit/benchmark/locomo_per_question_30b.csv",
       "sha256": "762d62aa33eccdbcbe229cf8c15c06063dde18778e16d8001b7b4773bee08487",
       "bytes": 42161963
@@ -101,24 +91,24 @@
       "bytes": 1681509
     },
     {
-      "path": "qwen3_30b_8001_pass8_deepseek_judge_appendix_20260624/judged.jsonl",
-      "sha256": "c193e69e3a5e4fbca17c374083b19b75bae989fa6b28ed5a47a5f44b63e9046a",
-      "bytes": 216457281
+      "path": "runs/qwen_embed_full_expand_main_20260731/qwen30b_records.jsonl",
+      "sha256": "9cc06648007f324402d11cc5372518d3ef75f30e549ae6b44637418a4401cca2",
+      "bytes": 1560307
     },
     {
-      "path": "qwen3_30b_8001_pass8_deepseek_judge_appendix_20260624/records.jsonl",
-      "sha256": "ae590828431349f8464f8731767dfb73596e3c9d0d64887c3334ee4a197e6872",
-      "bytes": 195322373
+      "path": "runs/qwen_embed_full_expand_main_20260731/qwen4b_records.jsonl",
+      "sha256": "4e8690ea507e7a4b24ca510552f2ef37f094b4dbe9a8a403352fe49bae0e2fda",
+      "bytes": 1556611
     },
     {
-      "path": "qwen3_4b_pass8_deepseek_judge_appendix_20260625_fixed_lightmem_lme/judged.jsonl",
-      "sha256": "48ea5a1c557d4008b35f65be2ea7bc07714744598fe3b27ed58ee6091bbd33b9",
-      "bytes": 222294384
+      "path": "runs/revision_anomaly_alignment_20260728/mempalace_gemma_legacy_qwen_retrieval/answer_results.jsonl",
+      "sha256": "b1fd675db7aaaa8e59ac0e8a94194a977eba2840e719295d56b17421910d80ce",
+      "bytes": 121139463
     },
     {
-      "path": "qwen3_4b_pass8_deepseek_judge_appendix_20260625_fixed_lightmem_lme/records.jsonl",
-      "sha256": "27f946f85389e46ec68f65308684351b5af6afa9783147bf8ab96647e74e49ff",
-      "bytes": 201180372
+      "path": "runs/revision_anomaly_alignment_20260728/mempalace_gemma_legacy_strict_judge/judged.jsonl",
+      "sha256": "9146eeaadc0cf4c1a92e1174f7700432eac6b7c9524b7b74ef49f6e65cab4578",
+      "bytes": 287805
     },
     {
       "path": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/locomo_tuned_edcd6f1d4240_judge_prompt.txt",
@@ -129,6 +119,216 @@
       "path": "runs/revision_e3_judge_prompt_sensitivity_20260716/prompts/longmemeval_initial_7ba1bd330f6e_judge_prompt.txt",
       "sha256": "a585ba411e4251e042dea8e8e5258554db62c982219f6096531d844b4effdc7d",
       "bytes": 4994
+    },
+    {
+      "path": "runs/revision_e45_mem0_full500_top10_answers_20260715/qwen30b/answers_top10.jsonl",
+      "sha256": "d90552c714db2f1b3f86b5b875c25865b1b02f88c4bfb610a78db837b4f50ae9",
+      "bytes": 1956459
+    },
+    {
+      "path": "runs/revision_e45_mem0_full500_top10_answers_20260715/qwen4b/answers_top10.jsonl",
+      "sha256": "b6684f2546e896f24cd6619c3763e0a9f8e2091c65d3c9cf85ce873dfe2986e4",
+      "bytes": 1920674
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_lme_top10/answers_top10.jsonl",
+      "sha256": "de1c4ed33effb3b8a9549e9177ef68c38a02eccd9974b0e580d049ba0308e83b",
+      "bytes": 1906423
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/manifest.json",
+      "sha256": "305368d5133419e60162881adee47b630eeb9084f5f4c601c80b220c38ca97b9",
+      "bytes": 1660
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_000/output/answer_results.json",
+      "sha256": "bc570104ba8f0e8329ef1401f0c3b4f44044d1cf074c4cf7dbe01c90e7e7f14e",
+      "bytes": 226244
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_001/output/answer_results.json",
+      "sha256": "787c33b1d4b7760bfecebe75daa95fe3a3fb1a0900229837f81a941379e08cd7",
+      "bytes": 117937
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_002/output/answer_results.json",
+      "sha256": "650c388c4daabf55888c50024fbc95f0b68aaa07e08d8070b5c0a7535f7afe93",
+      "bytes": 224566
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_003/output/answer_results.json",
+      "sha256": "b3ce1f41e98a24b2c302ff04e1bb6cee0427e5db9d3993105f89d554af870cf4",
+      "bytes": 292084
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_004/output/answer_results.json",
+      "sha256": "1d61477de44acae3bfd80a54a5ccba5d95f6eb4cdc73e159a23eefd731d7d33e",
+      "bytes": 269822
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_005/output/answer_results.json",
+      "sha256": "c329e95c058b58437c3d5c46221cf7ff16b5b48e288ce1728b7e086e4371d0cf",
+      "bytes": 176232
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_006/output/answer_results.json",
+      "sha256": "2146ec91caa8bf1128afccdff8249938e80666f9c6d733835685523afbe52096",
+      "bytes": 216951
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_007/output/answer_results.json",
+      "sha256": "18e415792cb1c5ee82b2c482c06e2977476f361478734d5c55d9f771ba94105b",
+      "bytes": 281484
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_008/output/answer_results.json",
+      "sha256": "bdc6346b2f59b224db3bbd4dc2f8c912d17d78f6f9ba8b3de2bd0fe4f5c79636",
+      "bytes": 216184
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/shards/shard_009/output/answer_results.json",
+      "sha256": "61a8d91663fce9ed8b9b197d066f5db6227cee5310fe447002ead83688c8d385",
+      "bytes": 224690
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo/validation.json",
+      "sha256": "3bebfa08a1311b7a5b67a926fda7f53e3fd10c29b9521557a6812eca1fa5fef7",
+      "bytes": 8521
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/gemma_locomo_cat5_strict/judged.jsonl",
+      "sha256": "419254c43c5e9341886afa7e8527412213ad9b597a3372d999a2edf7b4cdeb42",
+      "bytes": 391035
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/manifest.json",
+      "sha256": "7b39e4c86e1b064de0a1f7f03310d2fc7ea49a76354b0ea5cbea32c87a8e366d",
+      "bytes": 1676
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_000/output/answer_results.json",
+      "sha256": "283dba9d709981eda9c996949467b2793698c826413b255ab01f1d1fc0e6d094",
+      "bytes": 239627
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_001/output/answer_results.json",
+      "sha256": "72294e28fc5452fa31871ca49e5440e7c127d28cc9e387b5229bf96db5411a97",
+      "bytes": 122708
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_002/output/answer_results.json",
+      "sha256": "7da4cba36f3e0f7e372d9e9b7c76280bf6bc1f09a05a8a1cdef3f4d77c2c3fe4",
+      "bytes": 235356
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_003/output/answer_results.json",
+      "sha256": "e58be4ae450bb6bde1c7f6d37f14aac8438b2eb86f0319356db784839344a021",
+      "bytes": 306977
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_004/output/answer_results.json",
+      "sha256": "68fd19c65c174e86d22b064451e00a1267c8db849ef9111add24da1b9a88f7fb",
+      "bytes": 312450
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_005/output/answer_results.json",
+      "sha256": "6d20b35ae89be671b864605db8847eb6baed613f7ea0fcfa4f50ec9316eb216a",
+      "bytes": 205413
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_006/output/answer_results.json",
+      "sha256": "3372dabe988c12b56f2bba73031370d44c6613073f30512584c81d7b41e5883e",
+      "bytes": 220795
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_007/output/answer_results.json",
+      "sha256": "7248b294e795d6d8105d2ca4cac059cd86797bf86fe9fc4890b376ef8938f550",
+      "bytes": 284134
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_008/output/answer_results.json",
+      "sha256": "ecf52c70fb40b0ae772abc55242b0ffa5fe2f7f45a31dfb7f64f60a025f4a2e9",
+      "bytes": 226131
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/shards/shard_009/output/answer_results.json",
+      "sha256": "12533489ba06e5390cc0b17ba0b718274399557b0dc2af697384637d39880822",
+      "bytes": 244576
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo/validation.json",
+      "sha256": "40136184c6d2b44ca07dff25cdf615f364f2d6c414fe6e87073cce784928dba3",
+      "bytes": 8580
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen30b_locomo_cat5_strict/judged.jsonl",
+      "sha256": "97aaa92d0cd3dc06744fee099fb19502268a68842a918a9809a977551cde890a",
+      "bytes": 407718
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/manifest.json",
+      "sha256": "56630e0c0aa4cec36b05a2f33bfdaedd7b2da5ece4564f6a1c41154cdcc61eaa",
+      "bytes": 1669
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_000/output/answer_results.json",
+      "sha256": "40b08826c4faac1237622e1a55485c76ff3b59db9ea8063cb3e4b5c14ec20e72",
+      "bytes": 248212
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_001/output/answer_results.json",
+      "sha256": "9f799c6466ec56a34bf54296fc56811f033fe646b0f17e4fcb303ad3496aa26c",
+      "bytes": 122693
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_002/output/answer_results.json",
+      "sha256": "04ae4c4180445c39fe4f1a2fc14ef7857197e91f32e243a204afaaf488adfb8b",
+      "bytes": 228979
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_003/output/answer_results.json",
+      "sha256": "00417d970c4357497e193fc4be46b7fa98a9197c37b55c743af140ecbc010a31",
+      "bytes": 303639
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_004/output/answer_results.json",
+      "sha256": "fc2d21e4dd1ec9e7c7632edcedc966f749ace2efc68ac7934444097ff455ae1d",
+      "bytes": 291468
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_005/output/answer_results.json",
+      "sha256": "91580be544e5169fa067ef5d87e79a10969bb5ca69389e6743196f12a4b1e05b",
+      "bytes": 194917
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_006/output/answer_results.json",
+      "sha256": "99fa5b1e498958ef5de65082d5772af87af00faebbbd057df2ed2a123a71029d",
+      "bytes": 215519
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_007/output/answer_results.json",
+      "sha256": "4bc011f881fa9e80d94ae04f456c6b5a5ad7009b64456c80c62ade861d541a8a",
+      "bytes": 292463
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_008/output/answer_results.json",
+      "sha256": "6bfb9087d91ad1176643b5c3157080aa14db6a6c19ee74ab5f2e30a2c3c909df",
+      "bytes": 228582
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/shards/shard_009/output/answer_results.json",
+      "sha256": "26be54115b0227084fa6240601a5fe9ad56fd3b2858869ee312aaebb0aadab93",
+      "bytes": 235178
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo/validation.json",
+      "sha256": "d11ce4bc106a8253c148e81d630c2489ba3c6bd3d122b646cb0c5cde4ddf6a0b",
+      "bytes": 8549
+    },
+    {
+      "path": "runs/revision_mem0_timestamp_corrected_main_20260728/qwen4b_locomo_cat5_strict/judged.jsonl",
+      "sha256": "79cc5dfe51fe8897e1bd7fa4f7821f02032aa040b1fe8482e80360529b9cc6de",
+      "bytes": 403311
     },
     {
       "path": "runs/zep_local_2x3_20260718_185922/judge_qwen30b_gemma_reference_date/judged.jsonl",
@@ -151,6 +351,23 @@
       "bytes": 2369696
     }
   ],
-  "input_sha256": "e7e7ef3f444e068e85613f41964e4ba213b5ea137a1009a5f6839c18dcefd868",
-  "scope_note": "Frozen-answer regrade only. Retrieval, memory construction, and answer generation are not rerun. Qwen MemForest-Embed uses the separately recorded complete sample-0 rerun; corrected Qwen Mem0 LongMemEval replaces the submitted timestamp-bug answers."
+  "seeded_judgments": {
+    "seed_calls_source": "revision_full_public_judge_qwen_embed_full_expand_20260731/judged_calls.jsonl",
+    "seed_calls_sha256": "996200d4e47590eefa0be1251ca63bcfc5f9d29d1fe028ea3fe559797e681d4f",
+    "seed_inputs_source": "revision_full_public_judge_qwen_embed_full_expand_20260731/frozen_inputs.jsonl",
+    "seed_inputs_sha256": "c00f067cb0e888aedfd8fcd04dd972605a6e42075e4fdafaaa0fe53af4fe5fd0",
+    "mode": "exact_judge_input_match",
+    "compared_fields": [
+      "question",
+      "gold_answer",
+      "generated_answer",
+      "answer_sha256",
+      "question_type"
+    ],
+    "reused_inputs": 59664,
+    "changed_inputs": 0,
+    "retained_successful_calls": 59664
+  },
+  "input_sha256": "c00f067cb0e888aedfd8fcd04dd972605a6e42075e4fdafaaa0fe53af4fe5fd0",
+  "scope_note": "Frozen-answer regrade for unchanged methods. Mem0 retrieval, memory construction, and answer generation are replaced by timestamp-corrected global-top-10 artifacts for three backbones on LongMemEval-S and LoCoMo. Qwen MemForest-Embed uses native top-10 tree browsing with complete tree-unit expansion, the default answer prompt, and the same answer backbone as MemForest-Planner."
 }
