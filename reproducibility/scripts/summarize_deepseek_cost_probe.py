@@ -82,7 +82,7 @@ def main() -> None:
         writer.writerows(summary)
 
     validation = {
-        "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v1",
+        "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v2",
         "valid": not failures and all(grouped[method] for method in METHODS),
         "model": "deepseek-v4-flash",
         "thinking": "disabled",

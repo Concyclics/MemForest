@@ -38,9 +38,10 @@ repository rather than to a separate anonymized archive.
 - [`results/write_path_traces/`](results/write_path_traces/): Figure 1 native
   write-rate coordinates, representative MemForest traces, measurement scope,
   and source hashes.
-- [`results/deepseek_cost_probe/`](results/deepseek_cost_probe/): matched
-  five-method 20-message DeepSeek-V4-Flash probe with API-returned billable
-  token classes, direct costs, cache isolation manifest, and sanitized trace.
+- [`results/deepseek_cost_probe/`](results/deepseek_cost_probe/): three
+  independent matched five-method, 20-message DeepSeek-V4-Flash probes with
+  API-returned billable token classes, direct mean/min/max costs, cache
+  isolation manifests, and sanitized traces.
 - [`results/zep_local/native_budget_summary.csv`](results/zep_local/native_budget_summary.csv):
   six-cell native Graphiti object counts and serialized-context token lengths.
 - [`manifests/runtime_configs.json`](manifests/runtime_configs.json): serving,

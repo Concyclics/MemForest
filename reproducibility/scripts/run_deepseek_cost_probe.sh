@@ -10,11 +10,13 @@ MODEL=deepseek-v4-flash
 EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B
 EMBED_PATH=/home/chenhan/.cache/huggingface/hub/models--Qwen--Qwen3-Embedding-0.6B/snapshots/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
 PROBE_MESSAGES=20
-PROXY_PORT=18001
-EMBED_PORT=18002
-MEM0_PORT=18931
-NEO4J_HTTP_PORT=17474
-NEO4J_BOLT_PORT=17687
+PROBE_CONV_INDEX="${PROBE_CONV_INDEX:-0}"
+PROXY_PORT="${PROXY_PORT:-18001}"
+EMBED_PORT="${EMBED_PORT:-18002}"
+MEM0_PORT="${MEM0_PORT:-18931}"
+NEO4J_HTTP_PORT="${NEO4J_HTTP_PORT:-17474}"
+NEO4J_BOLT_PORT="${NEO4J_BOLT_PORT:-17687}"
+EMBED_GPU="${EMBED_GPU:-3}"
 NEO4J_CONTAINER="ds-cost-neo4j-${STAMP//_/-}"
 ISOLATION_PREFIX="mf-cost-${STAMP//_/-}"
 PROXY_PID=""
@@ -67,7 +69,7 @@ PROXY_PID=$!
 
 (
   cd "$ROOT/MemoryForest"
-  exec env CUDA_VISIBLE_DEVICES=3 "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
+  exec env CUDA_VISIBLE_DEVICES="$EMBED_GPU" "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
     --model "$EMBED_PATH" \
     --served-model-name "$EMBED_MODEL" \
     --host 127.0.0.1 \
@@ -91,7 +93,12 @@ wait_url "http://127.0.0.1:$EMBED_PORT/v1/models" embedding
   > "$RUN_DIR/services/embedding_heartbeat.log" 2>&1 &
 HEARTBEAT_PID=$!
 
-QIDS="$($PYTHON - "$ROOT/MemForest_Sigmod/artifact/datasets/performance_locomo_flat_20.json" "$RUN_DIR/mini_locomo_flat.json" "$PROBE_MESSAGES" <<'PY'
+read -r PROBE_SOURCE_ID QIDS < <("$PYTHON" - \
+  "$ROOT/MemForest_Sigmod/artifact/datasets/performance_locomo_flat_20.json" \
+  "$RUN_DIR/mini_locomo_flat.json" \
+  "$RUN_DIR/zep_data/locomo10_real.json" \
+  "$PROBE_MESSAGES" \
+  "$PROBE_CONV_INDEX" <<'PY'
 import copy
 import json
 import pathlib
@@ -99,8 +106,15 @@ import sys
 
 source = pathlib.Path(sys.argv[1])
 output = pathlib.Path(sys.argv[2])
-limit = int(sys.argv[3])
-row = copy.deepcopy(json.loads(source.read_text(encoding="utf-8"))[0])
+zep_output = pathlib.Path(sys.argv[3])
+limit = int(sys.argv[4])
+group_index = int(sys.argv[5])
+rows = json.loads(source.read_text(encoding="utf-8"))
+group_ids = list(dict.fromkeys(str(row["locomo_sample_id"]) for row in rows))
+if not 0 <= group_index < len(group_ids):
+    raise SystemExit(f"conversation index {group_index} outside [0, {len(group_ids)})")
+source_id = group_ids[group_index]
+row = copy.deepcopy(next(row for row in rows if str(row["locomo_sample_id"]) == source_id))
 sessions, dates, session_ids = [], [], []
 remaining = limit
 for session, date, session_id in zip(
@@ -117,10 +131,18 @@ row["haystack_sessions"] = sessions
 row["haystack_dates"] = dates
 row["haystack_session_ids"] = session_ids
 row["probe_message_limit"] = limit
+row["probe_conversation_index"] = group_index
+if remaining:
+    raise SystemExit(f"{source_id} has only {limit - remaining} messages; expected {limit}")
+output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(json.dumps([row], indent=2) + "\n", encoding="utf-8")
-print(row["question_id"])
+zep_output.parent.mkdir(parents=True, exist_ok=True)
+zep_output.write_text(json.dumps([row], indent=2) + "\n", encoding="utf-8")
+print(source_id, row["question_id"])
 PY
-)"
+)
+cp "$ROOT/runs/revision_prefix_cache_probe_extended_20260730/zep_data/locomo10.json" \
+  "$RUN_DIR/zep_data/locomo10.json"
 
 "$PYTHON" - \
   "$ROOT/MemoryForest/src/config/default.yaml" \
@@ -191,7 +213,7 @@ set_phase evermemos
     --dataset performance_locomo_20 \
     --system evermemos_frontier_qwen30_c128 \
     --stages add search answer \
-    --from-conv 0 --to-conv 1 \
+    --from-conv "$PROBE_CONV_INDEX" --to-conv "$((PROBE_CONV_INDEX + 1))" \
     --smoke --smoke-messages "$PROBE_MESSAGES" --smoke-questions 1 \
     --output-dir "$RUN_DIR/evermemos/output" \
     > "$RUN_DIR/evermemos/run.log" 2>&1
@@ -215,7 +237,7 @@ set_phase mem0
   EMBED_DIM=1024 \
   BASELINE_NUM_WORKERS=1 \
   EVAL_NUM_WORKERS=4 \
-  FROM_CONV=0 TO_CONV=1 \
+  FROM_CONV="$PROBE_CONV_INDEX" TO_CONV="$((PROBE_CONV_INDEX + 1))" \
   PYTHONUNBUFFERED=1 \
   SMOKE_MESSAGES="$PROBE_MESSAGES" SMOKE_QUESTIONS=1 \
   ./run_mem0_local_qwen3.sh smoke \
@@ -253,12 +275,12 @@ PYTHONPATH="$ROOT/external/graphiti-0.24.1:$ROOT/external/MemoryData" \
     --model-key qwen30b \
     --run-root "$RUN_DIR/zep" \
     --run-name deepseek_v4_flash \
-    --data-root "$ROOT/runs/revision_prefix_cache_probe_extended_20260730/zep_data" \
+    --data-root "$RUN_DIR/zep_data" \
     --llm-url "http://127.0.0.1:$PROXY_PORT/v1" \
     --embedding-url "http://127.0.0.1:$EMBED_PORT/v1" \
     --neo4j-uri "bolt://127.0.0.1:$NEO4J_BOLT_PORT" \
     --concurrency 1 \
-    --max-groups 1 \
+    --source-id "$PROBE_SOURCE_ID" \
     --max-rows 1 \
     > "$RUN_DIR/zep.log" 2>&1
 
@@ -267,7 +289,7 @@ PYTHONPATH="$ROOT/external/graphiti-0.24.1:$ROOT/external/MemoryData" \
   --output "$RUN_DIR/deepseek_cost_summary.csv" \
   --validation "$RUN_DIR/validation.json"
 
-"$PYTHON" - "$RUN_DIR" <<'PY'
+"$PYTHON" - "$RUN_DIR" "$PROBE_SOURCE_ID" "$PROBE_CONV_INDEX" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -275,11 +297,18 @@ import sys
 from datetime import datetime, timezone
 
 run_dir = pathlib.Path(sys.argv[1])
+source_id = sys.argv[2]
+conversation_index = int(sys.argv[3])
 dataset = run_dir / "mini_locomo_flat.json"
+rows = json.loads(dataset.read_text(encoding="utf-8"))
+question_id = str(rows[0]["question_id"])
 manifest = {
-    "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v1",
+    "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v2",
     "completed_at_utc": datetime.now(timezone.utc).isoformat(),
-    "scope": "first 20 messages of conv-26 plus one frozen retrieval and answer",
+    "scope": f"first 20 messages of {source_id} plus one frozen retrieval and answer",
+    "conversation_index": conversation_index,
+    "source_id": source_id,
+    "question_id": question_id,
     "model": "deepseek-v4-flash",
     "thinking": "disabled",
     "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
