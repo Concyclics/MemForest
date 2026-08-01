@@ -1,5 +1,15 @@
 # Revision result index
 
+## Native write-rate provenance
+
+The ten Qwen3-30B build-rate coordinates used by Figure 1 are released in
+[`results/write_path_traces/summary.csv`](results/write_path_traces/summary.csv).
+The matched LoCoMo `conv-43` probe uses 680 source turns, fresh application
+state, and cross-instance concurrency one for all five methods. LongMemEval
+retains each source measurement's native per-instance scope; the accompanying
+manifest explicitly prevents interpreting those rows as sustained concurrent
+throughput.
+
 ## Final three-backbone public-judge main results
 
 The final main-table regrade freezes retrieval and generated answers, applies
@@ -120,6 +130,12 @@ gold. Files:
 Each row contains 500 LongMemEval-S and 1,986 LoCoMo questions. All six cells
 completed with zero judge errors. Files:
 [`results/zep_local/`](results/zep_local/).
+
+Native retrieval usually returns five edges, five nodes, and ten episodes per
+question, with no communities in these runs. Exact six-cell means and
+serialized-context token mean/p95 values are in
+[`results/zep_local/native_budget_summary.csv`](results/zep_local/native_budget_summary.csv),
+with query-set digests in `native_budget_manifest.json`.
 
 ## Gemma cross-family matrix under the strict judge (diagnostic)
 

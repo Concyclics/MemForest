@@ -1,0 +1,47 @@
+{
+  "protocol_id": "vldb_revision_runtime_configs_v1_20260801",
+  "shared": {
+    "generation_serving": "self-hosted OpenAI-compatible vLLM endpoints",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "embedding_dimension": 1024,
+    "judge_model": "deepseek-v4-flash",
+    "judge_temperature": 0.0,
+    "judge_thinking": "disabled"
+  },
+  "memforest": {
+    "config": "src/config/default.yaml",
+    "canonicalization_top_k": 8,
+    "canonicalization_similarity_threshold": 0.93,
+    "max_concurrent_equivalence_checks_per_item": 4,
+    "entity_active_min_facts": 3,
+    "entity_active_min_sessions": 2,
+    "scene_theta_assign": 0.70,
+    "scene_theta_second": 0.70,
+    "scene_theta_spawn": 0.58,
+    "scene_theta_merge": 0.88,
+    "tree_browse_beam_width": 10,
+    "index": "exact normalized-inner-product FAISS"
+  },
+  "figure1_longmemeval": {
+    "scope": "native per-instance elapsed traces",
+    "cross_instance_policy": "Retained benchmark-harness traces except for the isolated Zep Local marker; not reported as sustained throughput.",
+    "provenance": "results/write_path_traces/manifest.json"
+  },
+  "figure1_locomo": {
+    "source_id": "conv-43",
+    "cross_instance_concurrency": 1,
+    "serving_policy": "non-eager Qwen3-30B",
+    "fresh_application_state": true,
+    "memforest_max_num_seqs": 512,
+    "evermemos_event_log_workers": 25,
+    "provenance": "results/write_path_traces/manifest.json"
+  },
+  "zep_local_full_benchmark": {
+    "benchmark_concurrency": 128,
+    "embedding_heartbeat": true,
+    "neo4j": "5.26.2",
+    "graphiti": "0.24.1",
+    "native_search_limit": 10,
+    "limit_semantics": "per evidence class"
+  }
+}

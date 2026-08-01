@@ -1,0 +1,25 @@
+{
+  "protocol_id": "figure1_native_write_trace_provenance_v1_20260801",
+  "model": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+  "metric": "source dialogue turns divided by observed native per-instance build/add elapsed seconds",
+  "interpretation": "Per-instance latency-derived rate, not sustained multi-instance serving throughput.",
+  "longmemeval": {
+    "memforest": "Mean of three representative per-instance traces.",
+    "evermemos_mem0_memoryos": "Means over 500 retained per-instance traces from the benchmark harness; the source artifact did not impose the matched LoCoMo cross-store schedule.",
+    "zep_local": "One isolated non-eager native build marker with cross-instance concurrency one."
+  },
+  "locomo": {
+    "source_id": "conv-43",
+    "source_turns": 680,
+    "methods": 5,
+    "cross_instance_concurrency": 1,
+    "timing_policy": "Fresh application state, native build/add stopwatch, non-eager Qwen3-30B serving."
+  },
+  "source_sha256": {
+    "MemoryForest/docs/baseline/performance.csv": "d3ec386266f0a0a234e58308bb1b75d2bb96ac5c80885b35efe6dd0970e996c6",
+    "MemoryForest/runs/revision_e4_matched_build_20260716/submission_prompt_w512/submission_prompt_w512.json": "dbc5420fdf79409003b0ce149ef64bd9eb73e9974581c9f56b79aeb2d8763fa2",
+    "MemoryForest/runs/revision_e4_matched_build_20260716/submission_prompt_w512/summary.json": "ae9999bc62511e637a1e877c9c2a0aa872870c81fa796d2147d3b6da6fe985e1",
+    "MemForest_Sigmod/artifact/tables/isolated_single_instance_build_timing.csv": "904762641091833d4a98edd64dffdd45bbd1c3c6a210c019381700d9c3481130",
+    "MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv": "8601d3d6b699e28c29556ffb506c766bd4e0395570bf315a9877bb3e3beeccb9"
+  }
+}

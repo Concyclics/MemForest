@@ -1,0 +1,7 @@
+model_key,benchmark,questions,edges_mean,nodes_mean,episodes_mean,communities_mean,context_tokens_mean,context_tokens_p95
+qwen4b,longmemeval,500,5.00000,5.00000,9.99200,0.00000,3268.628,4542
+qwen4b,locomo,1986,5.00000,4.97432,10.00000,0.00000,1359.575,1626
+qwen30b,longmemeval,500,5.00000,5.00000,9.99200,0.00000,3125.450,4412
+qwen30b,locomo,1986,5.00000,5.00000,10.00000,0.00000,1210.353,1413
+gemma,longmemeval,500,5.00000,5.00000,9.99200,0.00000,3104.718,4364
+gemma,locomo,1986,5.00000,5.00000,10.00000,0.00000,1167.739,1348

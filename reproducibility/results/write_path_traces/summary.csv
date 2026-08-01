@@ -1,0 +1,11 @@
+benchmark,method,model,source_id,source_turns,build_seconds,build_rate_turns_per_second,timing_n,cross_instance_concurrency,measurement_scope,source_artifact
+longmemeval,memforest,qwen3_30b,"mean(28dc39ac,bc8a6e93,7e00a6cb)",510.666667,179.737233,2.841184640,3,per_instance_trace,"mean of three representative native per-memory-instance write traces; max_num_seqs=512",MemoryForest/runs/revision_e4_matched_build_20260716/submission_prompt_w512/summary.json
+longmemeval,evermemos,qwen3_30b,full_split_mean,493.5,1048.756017,0.470557491,500,benchmark_harness,"mean native add latency over 500 retained per-instance traces; not isolated throughput",MemoryForest/docs/baseline/performance.csv
+longmemeval,mem0,qwen3_30b,full_split_mean,493.5,353.171247,1.397339121,500,benchmark_harness,"mean native add latency over 500 retained per-instance traces; not isolated throughput",MemoryForest/docs/baseline/performance.csv
+longmemeval,memoryos,qwen3_30b,full_split_mean,493.5,2439.934663,0.202259514,500,benchmark_harness,"mean native add latency over 500 retained per-instance traces; not isolated throughput",MemoryForest/docs/baseline/performance.csv
+longmemeval,zep_local,qwen3_30b,bc8a6e93,537,4703.415782,0.114172343,1,1,"isolated native non-eager build marker; service startup and fixed warm-up excluded",MemForest_Sigmod/artifact/tables/isolated_single_instance_build_timing.csv
+locomo,memforest,qwen3_30b,conv-43,680,96.872100,7.019564973,1,1,"native matched build stage; non-eager service; max_num_seqs=512",MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv
+locomo,evermemos,qwen3_30b,conv-43,680,921.139604,0.738216007,1,1,"native aligned add stage; non-eager service; event-log workers=25",MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv
+locomo,mem0,qwen3_30b,conv-43,680,1160.413850,0.585997832,1,1,"native matched build/add stopwatch; non-eager service",MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv
+locomo,memoryos,qwen3_30b,conv-43,680,2779.027699,0.244689896,1,1,"native matched build/add stopwatch; non-eager service",MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv
+locomo,zep_local,qwen3_30b,conv-43,680,3153.901713,0.215605958,1,1,"native matched build/add stopwatch; non-eager service",MemForest_Sigmod/artifact/tables/locomo_aligned_build_timing.csv

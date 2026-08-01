@@ -28,3 +28,15 @@ concurrency. The runner:
 Use `summarize_run.py --run-root <path>` to aggregate completed lanes. Judge the
 resulting frozen answer JSONL with the appendix prompt recorded beside the
 released result summaries.
+
+To reproduce the paper's native retrieval-budget table, run:
+
+```bash
+python reproducibility/scripts/summarize_zep_native_budget.py \
+  --run-root <path> \
+  --output reproducibility/results/zep_local/native_budget_summary.csv \
+  --manifest reproducibility/results/zep_local/native_budget_manifest.json
+```
+
+The script tokenizes the exact serialized context and excludes the answer
+instruction and question.

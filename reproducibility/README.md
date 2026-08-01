@@ -35,8 +35,17 @@ repository rather than to a separate anonymized archive.
 - [`results/qwen_embed_main_protocol/`](results/qwen_embed_main_protocol/):
   protocol-matched Qwen MemForest-Embed answers, expansion metadata, source
   hashes, and manifests for the four revised main-table cells.
+- [`results/write_path_traces/`](results/write_path_traces/): Figure 1 native
+  write-rate coordinates, representative MemForest traces, measurement scope,
+  and source hashes.
+- [`results/zep_local/native_budget_summary.csv`](results/zep_local/native_budget_summary.csv):
+  six-cell native Graphiti object counts and serialized-context token lengths.
+- [`manifests/runtime_configs.json`](manifests/runtime_configs.json): serving,
+  concurrency, index, routing, and retrieval settings used by the revision.
 - [`scripts/build_qwen_embed_main_records.py`](scripts/build_qwen_embed_main_records.py):
   normalization and protocol gates for the released Qwen Embed records.
+- [`scripts/summarize_zep_native_budget.py`](scripts/summarize_zep_native_budget.py):
+  regenerates the Zep native-object and context-token summary from query items.
 - [`scripts/run_independent_semantic_audit.py`](scripts/run_independent_semantic_audit.py):
   reruns the optional local Qwen semantic review.
 - [`scripts/summarize_independent_semantic_audit.py`](scripts/summarize_independent_semantic_audit.py):

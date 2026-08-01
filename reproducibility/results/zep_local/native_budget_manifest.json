@@ -1,0 +1,32 @@
+{
+  "percentile": "nearest-lower order statistic at floor(0.95*(n-1))",
+  "protocol_id": "zep_native_budget_v1_20260801",
+  "sources": {
+    "gemma/locomo": {
+      "query_digest": "00b0e064e9a1d1492c746007e7d51eb69207b804434ccd5c2c9508bbce6e3fab",
+      "query_files": 1986
+    },
+    "gemma/longmemeval": {
+      "query_digest": "fa800bf085110a33000f9566e8d1cc29c841bddb222a5c24b5136b8ed44056de",
+      "query_files": 500
+    },
+    "qwen30b/locomo": {
+      "query_digest": "b8e1180d11c5bce8fb23996448039b56ad128b6dcf2020654f11bb6f6f2d66ad",
+      "query_files": 1986
+    },
+    "qwen30b/longmemeval": {
+      "query_digest": "da3f8541554f734ce5d731d4431d0959fdc7115778693b2534bac5ff91d92ee7",
+      "query_files": 500
+    },
+    "qwen4b/locomo": {
+      "query_digest": "afb14351c33c0e5b9ae4072a295557967d1cf3f067f5be728db6f2477ebbf99c",
+      "query_files": 1986
+    },
+    "qwen4b/longmemeval": {
+      "query_digest": "a1d309b0c267d7500c6226eaa9a5fa04308d16a29b6f067e9a4650cabc11599c",
+      "query_files": 500
+    }
+  },
+  "token_policy": "Exact serialized context only; excludes answer instruction and question.",
+  "tokenizer": "Qwen/Qwen3-4B-Instruct-2507"
+}

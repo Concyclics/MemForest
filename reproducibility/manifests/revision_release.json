@@ -42,7 +42,9 @@
     "judge_prompt_sensitivity": "results/judge_prompt_sensitivity",
     "public_judge_three_backbone": "results/public_judge_three_backbone",
     "qwen_embed_main_protocol": "results/qwen_embed_main_protocol",
-    "author_adjudicated_semantic_audit": "results/semantic_audit/author_adjudicated"
+    "author_adjudicated_semantic_audit": "results/semantic_audit/author_adjudicated",
+    "write_path_traces": "results/write_path_traces",
+    "zep_native_budget": "results/zep_local/native_budget_summary.csv"
   },
   "implementations": {
     "index": "baselines/README.md",
@@ -53,6 +55,8 @@
     "mempalace": "baselines/mempalace",
     "zep_local": "baselines/zep_local",
     "shared_judge": "evaluation/unified_deepseek_judge.py",
-    "packaging": "pinned upstream commit plus complete local patch; third-party repositories are not vendored"
+    "packaging": "pinned upstream commit plus complete local patch; third-party repositories are not vendored",
+    "runtime_config": "manifests/runtime_configs.json",
+    "zep_native_budget_summarizer": "scripts/summarize_zep_native_budget.py"
   }
 }

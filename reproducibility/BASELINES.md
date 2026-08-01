@@ -12,6 +12,8 @@ shared-answer prompt is reported only as a sensitivity diagnostic.
 
 The exact upstream repositories and commits are recorded in
 [`manifests/baseline_versions.json`](manifests/baseline_versions.json).
+Revision runtime and concurrency settings are recorded in
+[`manifests/runtime_configs.json`](manifests/runtime_configs.json).
 The complete implementation package is indexed from
 [`baselines/README.md`](baselines/README.md). For each method, we publish the
 code overlay relative to the pinned upstream commit, portable runners, actual
@@ -113,6 +115,19 @@ as an equal-fact-budget representation test. Results for all three backbones
 and both benchmarks are under [`results/zep_local/`](results/zep_local/).
 The resumable runner and aggregator are under
 [`baselines/zep_local/`](baselines/zep_local/).
+The native per-class object counts and exact serialized-context token lengths
+are in
+[`results/zep_local/native_budget_summary.csv`](results/zep_local/native_budget_summary.csv);
+they can be regenerated with
+[`scripts/summarize_zep_native_budget.py`](scripts/summarize_zep_native_budget.py).
+
+## Native write-rate provenance
+
+The elapsed times and input-normalized rates used by the paper's Figure 1 are
+released under [`results/write_path_traces/`](results/write_path_traces/).
+The manifest distinguishes the matched, cross-instance-concurrency-one LoCoMo
+probe from the retained LongMemEval per-instance traces. These values measure
+native per-memory-instance latency and are not sustained benchmark throughput.
 
 ## Shared answer judging
 

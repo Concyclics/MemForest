@@ -1,0 +1,4 @@
+qid,source_turns,build_seconds,extract_seconds,non_extract_seconds,chat_calls,embedding_calls,max_chat_concurrency,prompt_tokens,completion_tokens
+28dc39ac,431,183.3320,127.2949,56.0371,563,46,273,572652,524931
+bc8a6e93,537,185.2581,125.7012,59.5569,618,57,270,631056,543720
+7e00a6cb,564,170.6216,113.9301,56.6915,648,70,289,657018,526450

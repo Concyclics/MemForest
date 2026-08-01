@@ -141,6 +141,87 @@ def check_zep() -> None:
     }, counts
 
 
+def check_zep_native_budget() -> None:
+    root = ROOT / "results" / "zep_local"
+    with (root / "native_budget_summary.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 6
+    observed = {(row["model_key"], row["benchmark"]): row for row in rows}
+    expected = {
+        ("qwen4b", "longmemeval"): (500, 3268.628, 4542),
+        ("qwen4b", "locomo"): (1986, 1359.575, 1626),
+        ("qwen30b", "longmemeval"): (500, 3125.450, 4412),
+        ("qwen30b", "locomo"): (1986, 1210.353, 1413),
+        ("gemma", "longmemeval"): (500, 3104.718, 4364),
+        ("gemma", "locomo"): (1986, 1167.739, 1348),
+    }
+    for key, (questions, mean_tokens, p95_tokens) in expected.items():
+        row = observed[key]
+        assert int(row["questions"]) == questions
+        assert abs(float(row["edges_mean"]) - 5.0) < 1e-12
+        assert abs(float(row["communities_mean"])) < 1e-12
+        assert abs(float(row["context_tokens_mean"]) - mean_tokens) < 1e-12
+        assert int(row["context_tokens_p95"]) == p95_tokens
+    manifest = read_json(root / "native_budget_manifest.json")
+    assert manifest["protocol_id"] == "zep_native_budget_v1_20260801"
+    assert len(manifest["sources"]) == 6
+    assert sum(item["query_files"] for item in manifest["sources"].values()) == 7458
+
+
+def check_write_path_traces() -> None:
+    root = ROOT / "results" / "write_path_traces"
+    with (root / "summary.csv").open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 10
+    observed = {
+        (row["benchmark"], row["method"]): float(
+            row["build_rate_turns_per_second"]
+        )
+        for row in rows
+    }
+    expected = {
+        ("longmemeval", "memforest"): 2.841184640,
+        ("longmemeval", "evermemos"): 0.470557491,
+        ("longmemeval", "mem0"): 1.397339121,
+        ("longmemeval", "memoryos"): 0.202259514,
+        ("longmemeval", "zep_local"): 0.114172343,
+        ("locomo", "memforest"): 7.019564973,
+        ("locomo", "evermemos"): 0.738216007,
+        ("locomo", "mem0"): 0.585997832,
+        ("locomo", "memoryos"): 0.244689896,
+        ("locomo", "zep_local"): 0.215605958,
+    }
+    for key, expected_value in expected.items():
+        assert abs(observed[key] - expected_value) < 1e-12, key
+    locomo_rows = [row for row in rows if row["benchmark"] == "locomo"]
+    assert {row["source_id"] for row in locomo_rows} == {"conv-43"}
+    assert {row["cross_instance_concurrency"] for row in locomo_rows} == {"1"}
+    with (root / "memforest_longmemeval_instances.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        instances = list(csv.DictReader(handle))
+    assert len(instances) == 3
+    assert {row["qid"] for row in instances} == {
+        "28dc39ac", "bc8a6e93", "7e00a6cb"
+    }
+    manifest = read_json(root / "manifest.json")
+    assert manifest["protocol_id"] == (
+        "figure1_native_write_trace_provenance_v1_20260801"
+    )
+    assert len(manifest["source_sha256"]) == 5
+
+
+def check_runtime_configs() -> None:
+    config = read_json(ROOT / "manifests" / "runtime_configs.json")
+    assert config["memforest"]["canonicalization_top_k"] == 8
+    assert config["memforest"]["canonicalization_similarity_threshold"] == 0.93
+    assert config["memforest"]["tree_browse_beam_width"] == 10
+    assert config["figure1_locomo"]["cross_instance_concurrency"] == 1
+    assert config["zep_local_full_benchmark"]["benchmark_concurrency"] == 128
+
+
 def check_judge_sensitivity() -> None:
     path = ROOT / "results" / "judge_prompt_sensitivity" / "summary.csv"
     with path.open(encoding="utf-8", newline="") as handle:
@@ -343,6 +424,9 @@ def main() -> None:
     check_mem0()
     check_gemma()
     check_zep()
+    check_zep_native_budget()
+    check_write_path_traces()
+    check_runtime_configs()
     check_judge_sensitivity()
     check_qwen_embed_main_protocol()
     check_public_judge_three_backbone()
