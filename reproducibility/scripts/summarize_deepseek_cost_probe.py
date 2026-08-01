@@ -69,10 +69,10 @@ def main() -> None:
             }
         )
 
-    ever_cost = next(row["cost_usd_20_messages"] for row in summary if row["method"] == "EverMemOS")
+    zep_cost = next(row["cost_usd_20_messages"] for row in summary if row["method"] == "Zep Local")
     for row in summary:
-        row["cost_efficiency_vs_evermemos"] = round(
-            ever_cost / row["cost_usd_20_messages"], 3
+        row["cost_efficiency_vs_zep_local"] = round(
+            zep_cost / row["cost_usd_20_messages"], 3
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

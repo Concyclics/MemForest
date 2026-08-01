@@ -85,14 +85,14 @@ def main() -> None:
             result[f"{metric}_max"] = max(values)
         summary.append(result)
 
-    ever_cost = next(
+    zep_cost = next(
         row["cost_usd_20_messages_mean"]
         for row in summary
-        if row["method"] == "EverMemOS"
+        if row["method"] == "Zep Local"
     )
     for row in summary:
-        row["cost_efficiency_vs_evermemos"] = (
-            ever_cost / row["cost_usd_20_messages_mean"]
+        row["cost_efficiency_vs_zep_local"] = (
+            zep_cost / row["cost_usd_20_messages_mean"]
         )
 
     args.detail_output.parent.mkdir(parents=True, exist_ok=True)
@@ -118,7 +118,7 @@ def main() -> None:
         "distinct_conversations": [item["source_id"] for item in metadata],
         "runs": metadata,
         "aggregation": "unweighted arithmetic mean across three equal-size probes; min/max retained",
-        "cost_efficiency": "ratio of EverMemOS mean cost to each method mean cost",
+        "cost_efficiency": "ratio of Zep Local mean cost to each method mean cost",
         "prices_usd_per_million_tokens": {
             "cache_hit_input": 0.0028,
             "cache_miss_input": 0.14,

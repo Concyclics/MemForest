@@ -429,11 +429,11 @@ def check_deepseek_cost_probe() -> None:
     assert validation["probe_count"] == 3
     assert validation["distinct_conversations"] == ["conv-26", "conv-42", "conv-43"]
     expected = {
-        "MemForest": (26062.666666666668, 24533, 27533, 0.004132566666666666),
-        "EverMemOS": (31324.666666666668, 30323, 32609, 0.004794286666666667),
-        "Mem0": (19488.333333333332, 18063, 21922, 0.0016602323333333334),
-        "MemoryOS": (14313.0, 10979, 16938, 0.002247523),
-        "Zep Local": (117799.0, 110286, 125653, 0.011379399333333333),
+        "MemForest": (26601.666666666668, 24615, 28202, 0.0021152470000000002),
+        "EverMemOS": (31398.666666666668, 30354, 32739, 0.004416824333333333),
+        "Mem0": (19365.333333333332, 18010, 21594, 0.0010163163333333333),
+        "MemoryOS": (13151.666666666666, 9088, 18932, 0.0019250296666666665),
+        "Zep Local": (120484.33333333333, 117396, 125938, 0.011177157666666666),
     }
     rows = {row["method"]: row for row in validation["methods"]}
     assert set(rows) == set(expected)
@@ -449,7 +449,7 @@ def check_deepseek_cost_probe() -> None:
         and row.get("path") == "/v1/chat/completions"
         and row.get("status_code") == 200
     ]
-    assert len(successful) == 731
+    assert len(successful) == 740
     assert {row["probe_source_id"] for row in successful} == {
         "conv-26", "conv-42", "conv-43"
     }

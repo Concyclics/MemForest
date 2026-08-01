@@ -33,7 +33,7 @@
     }
   ],
   "aggregation": "unweighted arithmetic mean across three equal-size probes; min/max retained",
-  "cost_efficiency": "ratio of EverMemOS mean cost to each method mean cost",
+  "cost_efficiency": "ratio of Zep Local mean cost to each method mean cost",
   "prices_usd_per_million_tokens": {
     "cache_hit_input": 0.0028,
     "cache_miss_input": 0.14,
@@ -64,7 +64,7 @@
       "cost_usd_per_1k_messages_mean": 0.20662833333333333,
       "cost_usd_per_1k_messages_min": 0.192969,
       "cost_usd_per_1k_messages_max": 0.219793,
-      "cost_efficiency_vs_evermemos": 1.1601232486670918
+      "cost_efficiency_vs_zep_local": 2.7535912306314883
     },
     {
       "method": "EverMemOS",
@@ -90,7 +90,7 @@
       "cost_usd_per_1k_messages_mean": 0.23971466666666666,
       "cost_usd_per_1k_messages_min": 0.229428,
       "cost_usd_per_1k_messages_max": 0.253631,
-      "cost_efficiency_vs_evermemos": 1.0
+      "cost_efficiency_vs_zep_local": 2.3735333584558282
     },
     {
       "method": "Mem0",
@@ -116,7 +116,7 @@
       "cost_usd_per_1k_messages_mean": 0.08301166666666666,
       "cost_usd_per_1k_messages_min": 0.078595,
       "cost_usd_per_1k_messages_max": 0.087246,
-      "cost_efficiency_vs_evermemos": 2.8877203331180357
+      "cost_efficiency_vs_zep_local": 6.854100540546835
     },
     {
       "method": "MemoryOS",
@@ -142,7 +142,7 @@
       "cost_usd_per_1k_messages_mean": 0.11237599999999999,
       "cost_usd_per_1k_messages_min": 0.087159,
       "cost_usd_per_1k_messages_max": 0.134217,
-      "cost_efficiency_vs_evermemos": 2.1331424268702333
+      "cost_efficiency_vs_zep_local": 5.063084708513921
     },
     {
       "method": "Zep Local",
@@ -168,7 +168,7 @@
       "cost_usd_per_1k_messages_mean": 0.56897,
       "cost_usd_per_1k_messages_min": 0.529226,
       "cost_usd_per_1k_messages_max": 0.61069,
-      "cost_efficiency_vs_evermemos": 0.42131280625884243
+      "cost_efficiency_vs_zep_local": 1.0
     }
   ],
   "failed_chat_requests": 0
