@@ -727,7 +727,7 @@ def main() -> None:
         "prompt_version": args.prompt_version,
         "benchmarks": sorted(benchmarks),
         "locomo_scope": args.locomo_scope,
-        "source": "MemForest_Sigmod/appendix/prompt_used.tex" if args.prompt_version == "appendix" else "MemoryForest/scripts/rerun_answer_passk.py",
+        "source": "reproducibility/evaluation/unified_deepseek_judge.py" if args.prompt_version == "appendix" else "MemoryForest/scripts/rerun_answer_passk.py",
         "longmemeval_prompt": APPENDIX_LONGMEMEVAL_PROMPT if args.prompt_version == "appendix" else ACCURACY_PROMPT,
         "locomo_prompt": APPENDIX_LOCOMO_PROMPT if args.prompt_version == "appendix" else ACCURACY_PROMPT,
     })

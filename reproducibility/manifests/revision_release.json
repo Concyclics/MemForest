@@ -29,7 +29,7 @@
     "retrieval_budget_diagnostic_k": [50, 200],
     "timestamp": "benchmark event/session time propagated through ingestion and answer context",
     "answer": "schema-aware path for primary rows; shared instruction only as sensitivity",
-    "judge": "public Mem0-family prompt for main tables; strict prompt in appendix; zero unresolved rows required",
+    "judge": "public Mem0-family prompt for main tables; strict prompt in the released evaluation package; zero unresolved rows required",
     "locomo_scope": "categories 1-4 under public judge; category 5 under strict answerability judge"
   },
   "results": {

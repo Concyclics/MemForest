@@ -26,7 +26,7 @@ concurrency. The runner:
 5. saves build, query, answer, call/token, and completeness summaries.
 
 Use `summarize_run.py --run-root <path>` to aggregate completed lanes. Judge the
-resulting frozen answer JSONL with the appendix prompt recorded beside the
+resulting frozen answer JSONL with the released strict prompt recorded beside the
 released result summaries.
 
 To reproduce the paper's native retrieval-budget table, run:

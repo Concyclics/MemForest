@@ -12,7 +12,7 @@
   "judge_temperature": 0,
   "votes_per_answer_and_arm": 3,
   "judge_arms": {
-    "strict": "paper appendix prompt",
+    "strict": "released strict prompt (prompt_version=appendix)",
     "public": "Mem0 memory-benchmarks LongMemEval prompt at 7ba1bd330f6ef6acdc751b6e1f82ac8af0568873"
   },
   "validation": {
