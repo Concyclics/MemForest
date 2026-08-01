@@ -1,0 +1,70 @@
+{
+  "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v1",
+  "valid": true,
+  "model": "deepseek-v4-flash",
+  "thinking": "disabled",
+  "prices_usd_per_million_tokens": {
+    "cache_hit_input": 0.0028,
+    "cache_miss_input": 0.14,
+    "output": 0.28
+  },
+  "methods": [
+    {
+      "method": "MemForest",
+      "requests": 20,
+      "cache_hit_input_tokens": 0,
+      "cache_miss_input_tokens": 21847,
+      "output_tokens": 3290,
+      "total_tokens": 25137,
+      "cost_usd_20_messages": 0.00397978,
+      "cost_usd_per_1k_messages": 0.198989,
+      "cost_efficiency_vs_evermemos": 1.262
+    },
+    {
+      "method": "EverMemOS",
+      "requests": 28,
+      "cache_hit_input_tokens": 256,
+      "cache_miss_input_tokens": 28876,
+      "output_tokens": 3498,
+      "total_tokens": 32630,
+      "cost_usd_20_messages": 0.005022797,
+      "cost_usd_per_1k_messages": 0.25114,
+      "cost_efficiency_vs_evermemos": 1.0
+    },
+    {
+      "method": "Mem0",
+      "requests": 15,
+      "cache_hit_input_tokens": 9984,
+      "cache_miss_input_tokens": 8774,
+      "output_tokens": 1060,
+      "total_tokens": 19818,
+      "cost_usd_20_messages": 0.001553115,
+      "cost_usd_per_1k_messages": 0.077656,
+      "cost_efficiency_vs_evermemos": 3.234
+    },
+    {
+      "method": "MemoryOS",
+      "requests": 36,
+      "cache_hit_input_tokens": 1024,
+      "cache_miss_input_tokens": 8981,
+      "output_tokens": 2264,
+      "total_tokens": 12269,
+      "cost_usd_20_messages": 0.001894127,
+      "cost_usd_per_1k_messages": 0.094706,
+      "cost_efficiency_vs_evermemos": 2.652
+    },
+    {
+      "method": "Zep Local",
+      "requests": 135,
+      "cache_hit_input_tokens": 41600,
+      "cache_miss_input_tokens": 64349,
+      "output_tokens": 5688,
+      "total_tokens": 111637,
+      "cost_usd_20_messages": 0.01071798,
+      "cost_usd_per_1k_messages": 0.535899,
+      "cost_efficiency_vs_evermemos": 0.469
+    }
+  ],
+  "failed_chat_requests": 0,
+  "metric_semantics": "Direct cost from official API-returned billable token classes"
+}

@@ -1,0 +1,18 @@
+{
+  "protocol_id": "deepseek_v4_flash_cost_probe_locomo_20messages_v1",
+  "completed_at_utc": "2026-08-01T09:17:44.550536+00:00",
+  "scope": "first 20 messages of conv-26 plus one frozen retrieval and answer",
+  "model": "deepseek-v4-flash",
+  "thinking": "disabled",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "cache_isolation": "fresh DeepSeek user_id namespace per method",
+  "dataset_sha256": "f9f6b2d8fb8f0ac28e2922c761c88a1b1972d824f67370d7dba7c4506e8c7ee8",
+  "methods": [
+    "MemForest",
+    "EverMemOS",
+    "Mem0",
+    "MemoryOS",
+    "Zep Local"
+  ],
+  "secrets_persisted": false
+}

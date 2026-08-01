@@ -419,6 +419,36 @@ def check_semantic_audit() -> None:
         assert not any(row.get("error") for row in rows)
 
 
+def check_deepseek_cost_probe() -> None:
+    root = ROOT / "results" / "deepseek_cost_probe"
+    validation = read_json(root / "validation.json")
+    assert validation["valid"] is True
+    assert validation["model"] == "deepseek-v4-flash"
+    assert validation["thinking"] == "disabled"
+    assert validation["failed_chat_requests"] == 0
+    expected = {
+        "MemForest": (20, 25137, 0.00397978),
+        "EverMemOS": (28, 32630, 0.005022797),
+        "Mem0": (15, 19818, 0.001553115),
+        "MemoryOS": (36, 12269, 0.001894127),
+        "Zep Local": (135, 111637, 0.01071798),
+    }
+    rows = {row["method"]: row for row in validation["methods"]}
+    assert set(rows) == set(expected)
+    for method, (requests, total, cost) in expected.items():
+        assert rows[method]["requests"] == requests
+        assert rows[method]["total_tokens"] == total
+        assert abs(rows[method]["cost_usd_20_messages"] - cost) < 1e-12
+    trace = list(read_jsonl(root / "llm_usage.jsonl"))
+    successful = [
+        row for row in trace
+        if row.get("record_type") == "request"
+        and row.get("path") == "/v1/chat/completions"
+        and row.get("status_code") == 200
+    ]
+    assert len(successful) == 234
+    assert all("messages" not in row and "api_key" not in row for row in trace)
+
 def main() -> None:
     check_baseline_implementations()
     check_mem0()
@@ -432,6 +462,7 @@ def main() -> None:
     check_public_judge_three_backbone()
     check_semantic_audit()
     check_author_adjudicated_audit()
+    check_deepseek_cost_probe()
     print("revision release verification: PASS")
 
 
