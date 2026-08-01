@@ -31,6 +31,7 @@ def build_app(
     api_key: str,
     model: str,
     isolation_prefix: str,
+    system_prompt_log: Path | None,
 ) -> FastAPI:
     app = FastAPI()
     app.state.upstream = upstream.rstrip("/")
@@ -41,6 +42,8 @@ def build_app(
     app.state.method = "unassigned"
     app.state.lock = asyncio.Lock()
     app.state.client = None
+    app.state.system_prompt_log = system_prompt_log
+    app.state.logged_system_prompts = set()
 
     @app.on_event("startup")
     async def startup() -> None:
@@ -127,6 +130,41 @@ def build_app(
             if isinstance(request_json, dict)
             else None
         )
+        system_prompt = None
+        if isinstance(request_json, dict):
+            messages = request_json.get("messages")
+            if isinstance(messages, list):
+                system_parts = [
+                    item.get("content")
+                    for item in messages
+                    if isinstance(item, dict)
+                    and item.get("role") == "system"
+                    and isinstance(item.get("content"), str)
+                ]
+                if system_parts:
+                    system_prompt = "\n".join(system_parts)
+        system_prompt_hash = stable_hash(system_prompt) if system_prompt is not None else None
+        if (
+            system_prompt_log is not None
+            and system_prompt is not None
+            and (app.state.method, system_prompt_hash) not in app.state.logged_system_prompts
+        ):
+            app.state.logged_system_prompts.add((app.state.method, system_prompt_hash))
+            system_prompt_log.parent.mkdir(parents=True, exist_ok=True)
+            with system_prompt_log.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "method": app.state.method,
+                            "system_prompt_hash": system_prompt_hash,
+                            "system_prompt_chars": len(system_prompt),
+                            "system_prompt": system_prompt,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
         await append(
             {
                 "record_type": "request",
@@ -137,6 +175,8 @@ def build_app(
                 "model": app.state.model,
                 "request_hash": stable_hash(request_json) if request_json is not None else None,
                 "prompt_hash": stable_hash(prompt_value) if prompt_value is not None else None,
+                "system_prompt_hash": system_prompt_hash,
+                "system_prompt_chars": len(system_prompt) if system_prompt is not None else 0,
                 "prompt_tokens": prompt,
                 "prompt_cache_hit_tokens": hit,
                 "prompt_cache_miss_tokens": miss,
@@ -165,6 +205,7 @@ def main() -> None:
     parser.add_argument("--api-key-env", default="DEEPSEEK_API_KEY")
     parser.add_argument("--model", default="deepseek-v4-flash")
     parser.add_argument("--isolation-prefix", required=True)
+    parser.add_argument("--system-prompt-log", type=Path)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18001)
     args = parser.parse_args()
@@ -175,7 +216,14 @@ def main() -> None:
     import uvicorn
 
     uvicorn.run(
-        build_app(args.upstream, args.log_path, api_key, args.model, args.isolation_prefix),
+        build_app(
+            args.upstream,
+            args.log_path,
+            api_key,
+            args.model,
+            args.isolation_prefix,
+            args.system_prompt_log,
+        ),
         host=args.host,
         port=args.port,
     )

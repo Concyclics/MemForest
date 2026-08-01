@@ -59,6 +59,7 @@ def main() -> None:
     parser.add_argument("--summary-output", type=Path, required=True)
     parser.add_argument("--validation-output", type=Path, required=True)
     parser.add_argument("--manifest-output", type=Path, required=True)
+    parser.add_argument("--warmup-source", action="append", default=[])
     args = parser.parse_args()
     if len(args.run) != 3:
         raise SystemExit(f"expected exactly three runs, found {len(args.run)}")
@@ -129,18 +130,33 @@ def main() -> None:
     args.validation_output.write_text(
         json.dumps(validation, indent=2) + "\n", encoding="utf-8"
     )
+    warm_cache = bool(args.warmup_source)
     manifest = {
         "protocol_id": validation["protocol_id"],
-        "scope": "three distinct LoCoMo conversations, each truncated to 20 messages plus one frozen retrieval and answer",
+        "scope": (
+            "verified warm-cache cost over three distinct LoCoMo conversations, "
+            "each truncated to 20 messages plus one frozen retrieval and answer"
+            if warm_cache
+            else "three distinct LoCoMo conversations, each truncated to 20 messages plus one frozen retrieval and answer"
+        ),
         "model": validation["model"],
         "thinking": validation["thinking"],
         "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-        "cache_isolation": "fresh DeepSeek user_id namespace per method and conversation",
+        "cache_isolation": (
+            "distinct DeepSeek user_id per method, shared across excluded warmups and measured conversations"
+            if warm_cache
+            else "fresh DeepSeek user_id namespace per method and conversation"
+        ),
         "aggregation": validation["aggregation"],
         "conversations": metadata,
         "methods": list(METHODS),
         "secrets_persisted": False,
     }
+    if warm_cache:
+        manifest["warmups"] = [
+            {"source_id": source_id, "included_in_totals": False}
+            for source_id in args.warmup_source
+        ]
     args.manifest_output.write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )

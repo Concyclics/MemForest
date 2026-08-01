@@ -1,0 +1,154 @@
+{
+  "protocol_id": "deepseek_v4_flash_verified_warm_cache_3x20_v1",
+  "valid": true,
+  "warmup_conversations": [
+    "conv-47",
+    "conv-48"
+  ],
+  "measured_conversations": [
+    "conv-26",
+    "conv-42",
+    "conv-43"
+  ],
+  "warmups_excluded_from_measured_rows": true,
+  "cache_eligible_template_rule": "validation prompt has at least 128 input tokens",
+  "template_validation": [
+    {
+      "method": "memforest",
+      "system_prompt_hash": "8b6dc962066b90c3524163e03c1e48e5219e5c670a19d906bfa1a109589f3830",
+      "prompt_tokens": 1413,
+      "cache_eligible": true,
+      "cache_hit_tokens": 1408,
+      "valid": true
+    },
+    {
+      "method": "memforest",
+      "system_prompt_hash": "81f0a8ae908291f63857380da2e6db38a8e7f9bb34c5883e3d6900fa4c741a1d",
+      "prompt_tokens": 161,
+      "cache_eligible": true,
+      "cache_hit_tokens": 128,
+      "valid": true
+    },
+    {
+      "method": "memforest",
+      "system_prompt_hash": "5f6a9508f015d1fe8cccd43e8bc7f2f041b5d10b0c587892e95e223b1bae2592",
+      "prompt_tokens": 190,
+      "cache_eligible": true,
+      "cache_hit_tokens": 128,
+      "valid": true
+    },
+    {
+      "method": "memforest",
+      "system_prompt_hash": "480afbd755335680f272d59909aa6a250b952b8cb62935525fc29963bc72b840",
+      "prompt_tokens": 546,
+      "cache_eligible": true,
+      "cache_hit_tokens": 512,
+      "valid": true
+    },
+    {
+      "method": "memforest",
+      "system_prompt_hash": "371c3ccc87272ed976aebfe132d64323a414d46557dd37e72eac1bc9d30d1455",
+      "prompt_tokens": 72,
+      "cache_eligible": false,
+      "cache_hit_tokens": 0,
+      "valid": true
+    },
+    {
+      "method": "memforest",
+      "system_prompt_hash": "bd760bec7001b2df264391d1a85fec83ec20a6f754b96507ca2531cd0b4c435a",
+      "prompt_tokens": 267,
+      "cache_eligible": true,
+      "cache_hit_tokens": 256,
+      "valid": true
+    },
+    {
+      "method": "mem0",
+      "system_prompt_hash": "771e72415949ac1ce0a46c7d4ae1141f5035bf35cc430325755e997c93b340a5",
+      "prompt_tokens": 904,
+      "cache_eligible": true,
+      "cache_hit_tokens": 896,
+      "valid": true
+    },
+    {
+      "method": "memoryos",
+      "system_prompt_hash": "25a3993adfdde0b5ae1ed1f924791ccb4f1b531455dc08a6df2d52360ebe3cc5",
+      "prompt_tokens": 81,
+      "cache_eligible": false,
+      "cache_hit_tokens": 0,
+      "valid": true
+    },
+    {
+      "method": "memoryos",
+      "system_prompt_hash": "3b2b1b3e71ab0e6d1d2468885833904e8b72d4a4554a4875f63da38d3d976db8",
+      "prompt_tokens": 124,
+      "cache_eligible": false,
+      "cache_hit_tokens": 0,
+      "valid": true
+    },
+    {
+      "method": "memoryos",
+      "system_prompt_hash": "682f34e9fc7112826cd9b3f464b7ef44a2cbbc30fc406b0b02c4c08b0b844da1",
+      "prompt_tokens": 164,
+      "cache_eligible": true,
+      "cache_hit_tokens": 128,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "56b0a638a85ae633745ff5e27885035373493a6f170d55ebfbd11876105ad1c0",
+      "prompt_tokens": 278,
+      "cache_eligible": true,
+      "cache_hit_tokens": 256,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "34cdc015afdef089950ecc6226ecf74e05f7af7973fbfa665f26632d995bfdc2",
+      "prompt_tokens": 341,
+      "cache_eligible": true,
+      "cache_hit_tokens": 256,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "ad496c2f02e6f26a5efe13634cc45b38d2aad277c908dffc0a736e63d80750bb",
+      "prompt_tokens": 527,
+      "cache_eligible": true,
+      "cache_hit_tokens": 512,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "bf79b6fd07d24d5fc3e91397056f4963d9ad7e03a436f4a31e7a91afd2fc191e",
+      "prompt_tokens": 112,
+      "cache_eligible": false,
+      "cache_hit_tokens": 0,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "e21724a9c9b8aa036d33a4a850e4921b0cd4d99897f9ed23e48ab1a7f11db0ae",
+      "prompt_tokens": 249,
+      "cache_eligible": true,
+      "cache_hit_tokens": 128,
+      "valid": true
+    },
+    {
+      "method": "zep_local",
+      "system_prompt_hash": "bc698e2bb2eaa24ce3fb8d66e3fbdee25b60311c4d4ed85321e25967b21b876c",
+      "prompt_tokens": 59,
+      "cache_eligible": false,
+      "cache_hit_tokens": 0,
+      "valid": true
+    }
+  ],
+  "second_warmup_provider_hits": {
+    "MemForest": 15232,
+    "EverMemOS": 768,
+    "Mem0": 14080,
+    "MemoryOS": 1280,
+    "Zep Local": 51968
+  },
+  "measured_cells": 15,
+  "measured_zero_hit_cells": 0
+}

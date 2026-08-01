@@ -1,0 +1,40 @@
+{
+  "protocol_id": "deepseek_v4_flash_cost_probe_locomo_3x20messages_v1",
+  "scope": "three distinct LoCoMo conversations, each truncated to 20 messages plus one frozen retrieval and answer",
+  "model": "deepseek-v4-flash",
+  "thinking": "disabled",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "cache_isolation": "fresh DeepSeek user_id namespace per method and conversation",
+  "aggregation": "unweighted arithmetic mean across three equal-size probes; min/max retained",
+  "conversations": [
+    {
+      "run_id": "revision_deepseek_cost_probe_20260801_174500_conv0",
+      "source_id": "conv-26",
+      "question_id": "conv-26_qa023",
+      "dataset_sha256": "6973a076a2a377f33315d1f301c85076f16e02e5dd74497a97d10a9ccf5895dd",
+      "completed_at_utc": "2026-08-01T09:48:10.666077+00:00"
+    },
+    {
+      "run_id": "revision_deepseek_cost_probe_20260801_174500_conv1",
+      "source_id": "conv-42",
+      "question_id": "conv-42_qa002",
+      "dataset_sha256": "918d41e7b4e8946f77a5b0a745b902f944b55e48ded5aee6769bbcc69bb50124",
+      "completed_at_utc": "2026-08-01T09:54:30.921077+00:00"
+    },
+    {
+      "run_id": "revision_deepseek_cost_probe_20260801_174500_conv2",
+      "source_id": "conv-43",
+      "question_id": "conv-43_qa002",
+      "dataset_sha256": "10bf795997524f5d9c5b11844bcfd89f11cdc0fdeef773c80e82b49b70771571",
+      "completed_at_utc": "2026-08-01T10:00:46.527842+00:00"
+    }
+  ],
+  "methods": [
+    "MemForest",
+    "EverMemOS",
+    "Mem0",
+    "MemoryOS",
+    "Zep Local"
+  ],
+  "secrets_persisted": false
+}

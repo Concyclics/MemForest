@@ -18,7 +18,7 @@ NEO4J_HTTP_PORT="${NEO4J_HTTP_PORT:-17474}"
 NEO4J_BOLT_PORT="${NEO4J_BOLT_PORT:-17687}"
 EMBED_GPU="${EMBED_GPU:-3}"
 NEO4J_CONTAINER="ds-cost-neo4j-${STAMP//_/-}"
-ISOLATION_PREFIX="mf-cost-${STAMP//_/-}"
+ISOLATION_PREFIX="${ISOLATION_PREFIX_OVERRIDE:-mf-cost-${STAMP//_/-}}"
 PROXY_PID=""
 EMBED_PID=""
 HEARTBEAT_PID=""
@@ -63,6 +63,7 @@ wait_url() {
   --log-path "$RUN_DIR/proxy/llm_usage.jsonl" \
   --model "$MODEL" \
   --isolation-prefix "$ISOLATION_PREFIX" \
+  --system-prompt-log "$RUN_DIR/proxy/system_prompts.jsonl" \
   --port "$PROXY_PORT" \
   > "$RUN_DIR/services/proxy.log" 2>&1 &
 PROXY_PID=$!

@@ -1,0 +1,24 @@
+{
+  "protocol_id": "memforest_cache_backend_reconciliation_v1",
+  "valid": true,
+  "same_prompt_hash_multiset": true,
+  "interpretation": "vLLM cached_tokens measure scheduler-level avoided prefill; DeepSeek prompt_cache_hit_tokens measure persisted provider cache units used for billing.",
+  "backends": [
+    {
+      "backend": "vllm",
+      "requests": 10,
+      "start_span_ms": 9.706,
+      "hit_requests": 9,
+      "hit_tokens": 12944,
+      "trace_sha256": "388af7e4d6a43dbcfef0098e5d679c1cafeeecc769a7e9475a46cbd233446684"
+    },
+    {
+      "backend": "deepseek",
+      "requests": 10,
+      "start_span_ms": 17.289,
+      "hit_requests": 0,
+      "hit_tokens": 0,
+      "trace_sha256": "bd4af858d0ff38e8d99aa5c11a3aac0259d00c1ce496420768baf1fb83defd4f"
+    }
+  ]
+}
