@@ -59,6 +59,11 @@ schema-aware answer prompt with the selected local backbone. The timestamp
 audit found benchmark dates in its retrieved contexts; it did not show the
 Mem0 ingestion-time collapse.
 
+All released configurations use EverMemOS's agentic retrieval mode. It runs
+hybrid retrieval and an LLM sufficiency check first; when evidence is judged
+insufficient, LLM-refined queries drive a second retrieval round before final
+reranking. The final response budget remains ten memory units.
+
 For score reconciliation, note that published EverMemOS tables use a different
 answer-model/protocol setting. We therefore report local controlled results and
 published results as different configurations, not as exact reproductions of

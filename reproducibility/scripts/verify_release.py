@@ -455,6 +455,54 @@ def check_deepseek_cost_probe() -> None:
     }
     assert all("messages" not in row and "api_key" not in row for row in trace)
 
+
+def check_write_conflicts() -> None:
+    root = ROOT / "results" / "write_conflicts"
+    manifest = read_json(root / "manifest.json")
+    assert manifest["source_qids"] == ["28dc39ac", "bc8a6e93", "7e00a6cb"]
+    assert manifest["tree_types"] == ["entity", "scene"]
+
+    with (root / "summary.csv").open(encoding="utf-8", newline="") as handle:
+        summary_rows = list(csv.DictReader(handle))
+    assert len(summary_rows) == 8
+    aggregate = {
+        row["scope"]: row for row in summary_rows if row["qid"] == "aggregate"
+    }
+    assert set(aggregate) == {"all", "without_global_fallback"}
+    assert int(aggregate["all"]["sessions"]) == 147
+    assert int(aggregate["all"]["max_facts_per_touched_tree"]) == 53
+    assert abs(
+        float(aggregate["all"]["session_pair_overlap_rate"])
+        - 0.8931985796230538
+    ) < 1e-12
+    assert abs(
+        float(aggregate["without_global_fallback"]["session_pair_overlap_rate"])
+        - 0.16634799235181644
+    ) < 1e-12
+
+    with (root / "session_tree_loads.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        detail_rows = list(csv.DictReader(handle))
+    assert len(detail_rows) == 1117
+    assert Counter(row["tree_type"] for row in detail_rows) == {
+        "scene": 780,
+        "entity": 337,
+    }
+
+
+def check_async_core_snapshot() -> None:
+    root = ROOT / "implementation" / "async_core"
+    tree_source = (root / "bplustree.py").read_text(encoding="utf-8")
+    forest_source = (root / "forest.py").read_text(encoding="utf-8")
+    assert "class AsyncRWLock" in tree_source
+    assert "async with self._rwlock.read_lock()" in tree_source
+    assert "async with self._rwlock.write_lock()" in tree_source
+    assert "async def _run_tree_inserts" in forest_source
+    assert "async def _take_dirty_tree_snapshot" in forest_source
+    assert "tmp.rename(target)" in forest_source
+
+
 def main() -> None:
     check_baseline_implementations()
     check_mem0()
@@ -469,6 +517,8 @@ def main() -> None:
     check_semantic_audit()
     check_author_adjudicated_audit()
     check_deepseek_cost_probe()
+    check_write_conflicts()
+    check_async_core_snapshot()
     print("revision release verification: PASS")
 
 

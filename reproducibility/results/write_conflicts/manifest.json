@@ -1,0 +1,20 @@
+{
+  "description": "Session-level MemTree write-concentration audit used in the R3-W3 response",
+  "source_run": "revision_e4_matched_build_20260716/submission_prompt_w512",
+  "source_qids": [
+    "28dc39ac",
+    "bc8a6e93",
+    "7e00a6cb"
+  ],
+  "session_attribution": "first source session recorded for each canonical fact",
+  "tree_types": [
+    "entity",
+    "scene"
+  ],
+  "global_fallback_ids": [
+    "entity:user",
+    "tree:entity:user"
+  ],
+  "session_pair_aggregation": "pairs are formed only within the same independent question/user stream",
+  "generator": "reproducibility/scripts/analyze_session_tree_write_conflicts.py"
+}

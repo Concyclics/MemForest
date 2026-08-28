@@ -38,12 +38,16 @@ results, and sanitized per-question data.
 
 Start with:
 
+- [`reproducibility/paper/MemForest_full_revision.pdf`](reproducibility/paper/MemForest_full_revision.pdf)
+  for the response, revised paper, and complete public appendix;
 - [`reproducibility/BASELINES.md`](reproducibility/BASELINES.md) for baseline
   setup and reproduction boundaries;
 - [`reproducibility/PROTOCOL.md`](reproducibility/PROTOCOL.md) for the shared
   evaluation protocol;
 - [`reproducibility/RESULTS.md`](reproducibility/RESULTS.md) for updated result
   tables;
+- [`reproducibility/implementation/`](reproducibility/implementation/) for the
+  online asynchronous per-tree locking and snapshot source path;
 - [`reproducibility/scripts/verify_release.py`](reproducibility/scripts/verify_release.py)
   for an offline completeness check.
 

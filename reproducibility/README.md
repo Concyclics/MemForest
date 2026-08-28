@@ -18,6 +18,9 @@ repository rather than to a separate anonymized archive.
   pass@k, and reporting policy.
 - [`RESULTS.md`](RESULTS.md): revision headline results and interpretation.
 - [`manifests/`](manifests/): machine-readable source and release metadata.
+- [`implementation/`](implementation/): the asynchronous
+  `Forest`/`AsyncBPlusTree` source snapshot used by the revised online
+  lock-granularity and snapshot semantics.
 - [`results/`](results/): compact summaries and sanitized per-question records.
 - [`scripts/verify_release.py`](scripts/verify_release.py): offline completeness,
   count, and headline-result checks.
@@ -41,6 +44,9 @@ repository rather than to a separate anonymized archive.
 - [`results/write_path_traces/`](results/write_path_traces/): Figure 1 native
   write-rate coordinates, representative MemForest traces, measurement scope,
   and source hashes.
+- [`results/write_conflicts/`](results/write_conflicts/): the 147-session
+  entity/scene-tree write-concentration audit used in the R3-W3 response,
+  including per-session/tree rows, aggregate statistics, and provenance.
 - [`results/deepseek_cost_probe/`](results/deepseek_cost_probe/): three
   independent matched five-method, 20-message DeepSeek-V4-Flash probes after
   two disjoint excluded warmups, with API-returned billable token classes,
@@ -64,6 +70,9 @@ repository rather than to a separate anonymized archive.
   reruns the expanded 249/300/120 local Qwen review.
 - [`scripts/summarize_expanded_semantic_audit.py`](scripts/summarize_expanded_semantic_audit.py):
   validates and regenerates the expanded joined records without API access.
+- [`scripts/analyze_session_tree_write_conflicts.py`](scripts/analyze_session_tree_write_conflicts.py):
+  regenerates the R3-W3 write-concentration tables from saved matched-build
+  fact stores and tree snapshots.
 - [`SHA256SUMS`](SHA256SUMS): checksums for every released revision file.
 
 The original submission's four large per-question CSV files remain in
