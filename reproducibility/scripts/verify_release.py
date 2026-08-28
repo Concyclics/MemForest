@@ -227,9 +227,42 @@ def check_judge_sensitivity() -> None:
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert len(rows) == 15
+
+    stratified_path = (
+        ROOT / "results" / "judge_prompt_sensitivity" /
+        "stratified_summary.csv"
+    )
+    with stratified_path.open(encoding="utf-8", newline="") as handle:
+        stratified = list(csv.DictReader(handle))
+    assert len(stratified) == 30
+    temporal = {
+        (row["benchmark"], row["method"], row["arm"]): row
+        for row in stratified
+        if row["scope"] == "temporal"
+    }
+    expected_temporal = {
+        ("locomo", "evermemos", "appendix"): (150, 103),
+        ("locomo", "evermemos", "mem0_tuned"): (150, 128),
+        ("locomo", "memforest", "appendix"): (150, 107),
+        ("locomo", "memforest", "mem0_tuned"): (150, 132),
+        ("locomo", "mem0", "appendix"): (150, 9),
+        ("locomo", "mem0", "mem0_tuned"): (150, 19),
+        ("longmemeval", "evermemos", "appendix"): (122, 64),
+        ("longmemeval", "evermemos", "mem0_initial"): (122, 70),
+        ("longmemeval", "memforest", "appendix"): (122, 96),
+        ("longmemeval", "memforest", "mem0_initial"): (122, 99),
+        ("longmemeval", "mem0", "appendix"): (122, 37),
+        ("longmemeval", "mem0", "mem0_initial"): (122, 43),
+    }
+    for key, (expected_n, expected_correct) in expected_temporal.items():
+        assert int(temporal[key]["n"]) == expected_n
+        assert int(temporal[key]["correct"]) == expected_correct
+
     manifest = read_json(ROOT / "manifests" / "judge_prompt_sensitivity.json")
     assert manifest["validation"]["observed_calls"] == 8496
     assert manifest["validation"]["judge_errors"] == 0
+    assert manifest["scope"]["longmemeval_temporal_questions_per_method"] == 122
+    assert manifest["scope"]["locomo_temporal_questions_per_method"] == 150
 
 
 def check_public_judge_three_backbone() -> None:

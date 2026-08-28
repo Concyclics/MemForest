@@ -5,7 +5,9 @@
   "scope": {
     "methods": ["evermemos", "memforest", "mem0"],
     "longmemeval_questions_per_method": 172,
+    "longmemeval_temporal_questions_per_method": 122,
     "locomo_questions_per_method": 200,
+    "locomo_temporal_questions_per_method": 150,
     "repetitions": 3,
     "prompt_arm_items": 2832,
     "expected_calls": 8496
@@ -21,5 +23,9 @@
     "judge_errors": 0,
     "majority_rows": 2832,
     "all_majorities_complete": true
-  }
+  },
+  "published_files": [
+    "results/judge_prompt_sensitivity/summary.csv",
+    "results/judge_prompt_sensitivity/stratified_summary.csv"
+  ]
 }

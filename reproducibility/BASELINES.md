@@ -155,6 +155,9 @@ The judge sensitivity experiment freezes answers and varies only the judge
 prompt. It contains 8,496 DeepSeek calls: three votes over 2,832
 method-benchmark-prompt items, with zero API or parse errors. The historical
 Mem0-family prompts raise scores for all tested systems, so this is protocol
-sensitivity evidence rather than a baseline-specific correction. The summary
-and manifest are in [`results/judge_prompt_sensitivity/`](results/judge_prompt_sensitivity/)
-and [`manifests/judge_prompt_sensitivity.json`](manifests/judge_prompt_sensitivity.json).
+sensitivity evidence rather than a baseline-specific correction. Overall and
+temporal/control summaries are in
+[`summary.csv`](results/judge_prompt_sensitivity/summary.csv) and
+[`stratified_summary.csv`](results/judge_prompt_sensitivity/stratified_summary.csv);
+the run manifest is
+[`manifests/judge_prompt_sensitivity.json`](manifests/judge_prompt_sensitivity.json).

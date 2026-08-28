@@ -166,5 +166,7 @@ accuracy by:
 | MemForest | +16.00 points | +2.46 points |
 
 This quantifies protocol sensitivity. Since MemForest also gains, it is not
-used to claim that only baseline scores were inflated. Files:
+used to claim that only baseline scores were inflated. The temporal ordering
+is unchanged under the strict and public prompts on both benchmarks:
+MemForest, EverMemOS, then Mem0. Overall and stratified files are in
 [`results/judge_prompt_sensitivity/`](results/judge_prompt_sensitivity/).
