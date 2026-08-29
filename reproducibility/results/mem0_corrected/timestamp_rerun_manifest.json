@@ -1,0 +1,32 @@
+{
+  "protocol_id": "mem0_timestamp_corrected_locomo_global_top10_v1_20260728",
+  "dataset_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "conversation_shards": 10,
+  "max_parallel_shards": 10,
+  "final_retrieval_top_k": 10,
+  "api_mode": "local_rest",
+  "timestamp_policy": "benchmark session time is normalized to UTC and written to metadata.created_at and metadata.event_time; add batches may not cross source sessions",
+  "evaluated_adapter_sha256": "a370b2eebac03215045b7b8171c1a13b3c2b0feaed3a1bf83c07bcea1b2b73a1",
+  "released_adapter_sha256": "14ffef5a871090c22eef37ae310ec1a4145d93ee683c8e26db857d680502a21f",
+  "system_config_sha256": "198cd394332a4acc882833c06bae14f8d48f4bdfb38a1690b68118d56aa73f7c",
+  "evaluated_runner_sha256": "68b70de4a3ba09fbd84285641c9c314b0297623e5f260918d41cc0dbfd9586c3",
+  "keys_recorded": false,
+  "models": [
+    {
+      "model_label": "qwen3_4b",
+      "llm_model": "Qwen/Qwen3-4B-Instruct-2507-FP8",
+      "validation_sha256": "d11ce4bc106a8253c148e81d630c2489ba3c6bd3d122b646cb0c5cde4ddf6a0b"
+    },
+    {
+      "model_label": "qwen3_30b",
+      "llm_model": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+      "validation_sha256": "40136184c6d2b44ca07dff25cdf615f364f2d6c414fe6e87073cce784928dba3"
+    },
+    {
+      "model_label": "gemma4_12b",
+      "llm_model": "google/gemma-4-12B-it",
+      "validation_sha256": "3bebfa08a1311b7a5b67a926fda7f53e3fd10c29b9521557a6812eca1fa5fef7"
+    }
+  ]
+}

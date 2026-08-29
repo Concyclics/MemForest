@@ -112,7 +112,8 @@ Reproduction path:
    and communities with `SearchConfig.limit=10`.
 4. Build the released schema-aware context and answer with the same backbone
    used for graph extraction/resolution in that row.
-5. Judge the frozen answers with the shared DeepSeek appendix judge.
+5. Judge frozen main-table answers with the public benchmark prompt under
+   DeepSeek-V4-Flash; use the stricter appendix prompt only for sensitivity.
 
 Graphiti's limit is a per-result-class cap, not a global ten-flat-fact cap. The
 release therefore preserves native context sizes instead of presenting the row
@@ -130,9 +131,8 @@ they can be regenerated with
 
 The elapsed times and input-normalized rates used by the paper's Figure 1 are
 released under [`results/write_path_traces/`](results/write_path_traces/).
-The manifest distinguishes the matched, cross-instance-concurrency-one LoCoMo
-probe from the retained LongMemEval per-instance traces. These values measure
-native per-memory-instance latency and are not sustained benchmark throughput.
+The manifest records the matched LoCoMo probe and the retained LongMemEval
+per-instance traces used to compute the plotted build rates.
 
 ## Shared answer judging
 

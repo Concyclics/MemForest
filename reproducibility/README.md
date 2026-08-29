@@ -15,7 +15,7 @@ repository rather than to a separate anonymized archive.
 - [`BASELINES.md`](BASELINES.md): pinned upstream versions, local deployment
   boundaries, timestamp policy, retrieval budget, and reproduction procedure.
 - [`baselines/`](baselines/): pinned code overlays, configs, licenses, and
-  portable runners for every main/revision baseline.
+  available rerun entry points for the main/revision baselines.
 - [`evaluation/`](evaluation/): the frozen shared DeepSeek judge implementation.
 - [`PROTOCOL.md`](PROTOCOL.md): datasets, model roles, answer generation, judge,
   pass@k, and reporting policy.
@@ -44,6 +44,10 @@ repository rather than to a separate anonymized archive.
 - [`results/qwen_embed_main_protocol/`](results/qwen_embed_main_protocol/):
   protocol-matched Qwen MemForest-Embed answers, expansion metadata, source
   hashes, and manifests for the four revised main-table cells.
+- [`results/mem0_corrected/timestamp_rerun_manifest.json`](results/mem0_corrected/timestamp_rerun_manifest.json)
+  and [`timestamp_validation_summary.csv`](results/mem0_corrected/timestamp_validation_summary.csv):
+  the three-backbone LoCoMo timestamp-correction protocol, adapter hashes, and
+  count/date validation for 1,986 answers per backbone.
 - [`results/write_path_traces/`](results/write_path_traces/): Figure 1 native
   write-rate coordinates, representative MemForest traces, measurement scope,
   and source hashes.
@@ -97,9 +101,9 @@ baseline repositories and model services listed in
 [`BASELINES.md`](BASELINES.md).
 
 Every baseline implementation is indexed in
-[`baselines/README.md`](baselines/README.md). We publish complete patches
-relative to pinned upstream commits instead of mutable copies of third-party
-repositories.
+[`baselines/README.md`](baselines/README.md). We publish pinned integration
+files and patches relative to upstream commits instead of mutable copies of
+third-party repositories.
 
 ## Data policy
 

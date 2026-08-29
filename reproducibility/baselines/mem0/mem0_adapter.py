@@ -78,6 +78,12 @@ class Mem0Adapter(OnlineAPIAdapter):
         self.add_interval = config.get("add_interval", 0.0)
         self.search_interval = config.get("search", {}).get("search_interval", 0.0)
         self.console = Console()
+        self._timestamp_audit_path = (
+            Path(output_dir) / "mem0_add_timestamp_audit.jsonl"
+            if output_dir is not None
+            else None
+        )
+        self._timestamp_audit_lock = asyncio.Lock()
 
         # Set custom instructions (loaded from prompts.yaml)
         # Prioritize config settings (backward compatible), otherwise load from prompts
@@ -118,6 +124,14 @@ class Mem0Adapter(OnlineAPIAdapter):
                 timeout=timeout,
             )
         return self._session
+
+    async def _record_timestamp_audit(self, row: Dict[str, Any]) -> None:
+        if self._timestamp_audit_path is None:
+            return
+        async with self._timestamp_audit_lock:
+            self._timestamp_audit_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._timestamp_audit_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     async def close(self):
         if self._session and not self._session.closed:
@@ -276,22 +290,46 @@ class Mem0Adapter(OnlineAPIAdapter):
         if truncated_count > 0:
             self.console.print(f"   ⚠️  Truncated {truncated_count} messages (>{self.max_content_length} chars)", style="yellow")
 
-        # Add messages in batches with retry
-        # Note: messages list corresponds to conv.messages in order
-        session = await self._get_session() if self.api_mode == "local_rest" else None
-        for i in range(0, len(messages), self.batch_size):
-            batch_messages = messages[i : i + self.batch_size]
-            batch_index = i // self.batch_size
+        # Mem0 accepts one timestamp per add call. Keep each batch inside one
+        # source session so a later session never inherits an earlier timestamp.
+        if len(messages) != len(conv.messages):
+            raise ValueError(
+                f"Mem0 timestamp alignment failed for {conv.conversation_id}: "
+                f"{len(messages)} formatted messages != "
+                f"{len(conv.messages)} source messages"
+            )
 
-            # Use the timestamp of the first message in this batch as the event time.
+        session = await self._get_session() if self.api_mode == "local_rest" else None
+        batch_start = 0
+        batch_index = 0
+        while batch_start < len(messages):
+            source_timestamp = conv.messages[batch_start].timestamp
+            source_session = conv.messages[batch_start].metadata.get("session")
+            batch_end = batch_start + 1
+            while (
+                batch_end < len(messages)
+                and batch_end - batch_start < self.batch_size
+                and (
+                    conv.messages[batch_end].metadata.get("session") == source_session
+                    if source_session is not None
+                    else conv.messages[batch_end].timestamp == source_timestamp
+                )
+            ):
+                batch_end += 1
+
+            batch_messages = messages[batch_start:batch_end]
+
+            # The evaluated REST endpoint stores event time in memory metadata.
             # Mem0 stores memory timestamps in metadata.created_at; without this, the
             # local REST server falls back to ingestion wall-clock time.
             timestamp = None
             created_at_iso = None
             timestamp_source = None
-            if i < len(conv.messages) and conv.messages[i].timestamp:
-                ts = conv.messages[i].timestamp
-                timestamp_source = conv.messages[i].metadata.get("timestamp_source")
+            if source_timestamp:
+                ts = source_timestamp
+                timestamp_source = conv.messages[batch_start].metadata.get(
+                    "timestamp_source"
+                )
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
                 else:
@@ -315,6 +353,14 @@ class Mem0Adapter(OnlineAPIAdapter):
                                 "conversation_id": conv.conversation_id,
                                 "speaker": speaker,
                                 "batch_index": batch_index,
+                                "source_message_start": batch_start,
+                                "source_message_end": batch_end,
+                                "source_session": source_session,
+                                "source_timestamp": (
+                                    source_timestamp.isoformat()
+                                    if source_timestamp is not None
+                                    else None
+                                ),
                                 "timestamp_source": timestamp_source,
                             }
                         async with session.post(
@@ -331,6 +377,47 @@ class Mem0Adapter(OnlineAPIAdapter):
                             timestamp=timestamp,
                             user_id=user_id,
                         )
+                    await self._record_timestamp_audit(
+                        {
+                            "conversation_id": conv.conversation_id,
+                            "speaker": speaker,
+                            "user_id": user_id,
+                            "batch_index": batch_index,
+                            "source_message_start": batch_start,
+                            "source_message_end": batch_end,
+                            "message_count": len(batch_messages),
+                            "source_timestamp": (
+                                source_timestamp.isoformat()
+                                if source_timestamp is not None
+                                else None
+                            ),
+                            "source_session": source_session,
+                            "created_at": created_at_iso,
+                            "timestamp_source": timestamp_source,
+                            "unique_source_sessions": sorted(
+                                {
+                                    message.metadata.get("session")
+                                    for message in conv.messages[
+                                        batch_start:batch_end
+                                    ]
+                                },
+                                key=lambda value: (
+                                    "" if value is None else str(value)
+                                ),
+                            ),
+                            "unique_source_timestamps": sorted(
+                                {
+                                    message.timestamp.isoformat()
+                                    if message.timestamp is not None
+                                    else None
+                                    for message in conv.messages[
+                                        batch_start:batch_end
+                                    ]
+                                },
+                                key=lambda value: "" if value is None else value,
+                            ),
+                        }
+                    )
                     # Wait between add requests to avoid rate limits
                     if self.add_interval > 0:
                         await asyncio.sleep(self.add_interval)
@@ -350,6 +437,9 @@ class Mem0Adapter(OnlineAPIAdapter):
                             style="red"
                         )
                         raise e
+
+            batch_start = batch_end
+            batch_index += 1
 
         return None
 

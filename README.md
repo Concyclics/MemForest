@@ -4,14 +4,18 @@ Supplementary artifact for the VLDB 2027 submission:
 
 **MemForest: An Efficient Agent Memory System with Hierarchical Temporal Indexing**
 
-This repository provides the reference implementation, supplementary appendix, configuration files, prompts, and benchmark outputs used to support the results reported in the paper.
+This repository provides the reference implementation, revision PDFs,
+configuration files, prompts, core logs, and result data used to support the
+reported results.
 
 ## Paper and Supplement
 
-- Main submission PDF: `paper/MemForest_VLDB_Final_12.pdf`
-- Supplementary appendix: `paper/MemForest_Supplementary_Appendix.pdf`
+- [Revised paper with public appendix](reproducibility/paper/MemForest_full_revision.pdf)
+- [Revision response, revised paper, and public appendix](reproducibility/paper/MemForest_response_full_revision.pdf)
 
-The main paper follows the 12-page PVLDB research-track submission format. The supplementary appendix contains additional derivations, prompts, ablation details, extended result tables, and implementation notes.
+The length-limited submission PDF is uploaded through the conference system.
+The linked public versions include the additional diagnostics referenced by the
+response.
 
 ## Artifact Scope
 
@@ -22,9 +26,9 @@ It includes:
 - Source code for the MemForest memory substrate and retrieval pipeline.
 - Configuration files for the 30B and 4B experimental settings.
 - Prompt templates used for extraction, summarization, browsing, answering, and judging.
-- Per-question benchmark outputs for LongMemEval-S and LoCoMo.
-- CSV files containing answer and judge results used to compute the reported pass@1 and pass@1--8 metrics.
-- Supplementary appendix with additional experimental details.
+- Per-question labels and compact result tables for LongMemEval-S and LoCoMo.
+- Core manifests, validation summaries, and measured write-path traces.
+- A public appendix with additional experimental details.
 
 Reviewers can either inspect the released benchmark outputs directly or run the system with their own OpenAI-compatible model endpoints.
 
@@ -74,9 +78,8 @@ The main design components are:
 
 ```text
 .
-├── paper/                  # Main submission PDF and supplementary appendix
 ├── benchmark/              # Per-question outputs and judge results
-├── reproducibility/        # Revision protocols, baseline recipes, and updated results
+├── reproducibility/        # Revision PDFs, protocols, baseline recipes, and results
 ├── src/                    # MemForest implementation
 │   ├── api/                # OpenAI-compatible chat and embedding clients
 │   ├── build/              # Tree construction, routing, and indexing
@@ -180,73 +183,41 @@ Runtime artifacts are written under the `snapshot_dir` passed to `MemForest`, wi
 
 ```text
 <snapshot_dir>/<user_id>/
-├── sqlite/        # Fact and turn store
-├── index/         # FAISS indexes and sidecar metadata
-├── trees/         # Serialized session/entity/scene trees
-└── logs/          # Retrieval traces and per-step API logs
+├── facts/                  # Canonical facts and their FAISS index
+├── trees/                  # Serialized session/entity/scene trees
+├── node_index/             # Tree-node embeddings and FAISS index
+├── session_registry.json   # Source-session metadata
+├── summary_cache.json      # Derived summary cache
+├── cell_store.json         # Persisted cell records
+└── metadata.json           # Snapshot metadata
 ```
 
 The persistent state consists of canonical facts, scope assignments, tree structure, and source-session references. Summaries, embeddings, and retrieval index rows are derived artifacts that can be regenerated from the persistent state.
 
 ## Benchmark Outputs
 
-Per-question benchmark outputs are provided under `benchmark/`. Each row contains the question, gold answer, model answer, and LLM-judge verdicts for repeated runs.
+The CSVs under [`benchmark/`](benchmark/) preserve the original-submission
+snapshot. Revised three-backbone main-table results are under
+[`reproducibility/results/public_judge_three_backbone/`](reproducibility/results/public_judge_three_backbone/):
 
-| Benchmark | Model size | File |
-|---|---|---|
-| LoCoMo | Qwen3-30B | `benchmark/locomo_per_question_30b.csv` |
-| LoCoMo | Qwen3-4B | `benchmark/locomo_per_question_4b.csv` |
-| LongMemEval-S | Qwen3-30B | `benchmark/longmemeval_per_question_30b.csv` |
-| LongMemEval-S | Qwen3-4B | `benchmark/longmemeval_per_question_4b.csv` |
+- [`summary.csv`](reproducibility/results/public_judge_three_backbone/summary.csv)
+  contains the aggregate benchmark and category values;
+- [`per_question_labels.csv`](reproducibility/results/public_judge_three_backbone/per_question_labels.csv)
+  contains the frozen per-question judge labels;
+- [`input_manifest.json`](reproducibility/results/public_judge_three_backbone/input_manifest.json)
+  and [`validation.json`](reproducibility/results/public_judge_three_backbone/validation.json)
+  record the protocol and completeness checks.
 
-Expected columns:
+Run the API-free release verifier to check row counts, hashes, protocol fields,
+and the headline table values:
 
-```text
-method, model_size, question_type, qid, question, gold_answer,
-answer_1, ..., answer_8,
-judge_1, ..., judge_8
-```
-
-The `judge_*` columns are binary correctness labels produced by the LLM judge. The paper reports pass@1 as the main metric and reports pass@1--8 curves in the supplementary appendix.
-
-## Reproducing Accuracy Tables
-
-The reported accuracy numbers can be recomputed from the benchmark CSV files by aggregating the judge columns.
-
-For pass@1:
-
-```python
-import pandas as pd
-
-df = pd.read_csv("benchmark/longmemeval_per_question_30b.csv")
-score = df.groupby("method")["judge_1"].mean() * 100
-print(score.sort_values(ascending=False))
-```
-
-For pass@8:
-
-```python
-judge_cols = [f"judge_{i}" for i in range(1, 9)]
-df["pass_at_8"] = df[judge_cols].max(axis=1)
-score = df.groupby("method")["pass_at_8"].mean() * 100
-print(score.sort_values(ascending=False))
-```
-
-For per-category accuracy:
-
-```python
-score = (
-    df.groupby(["method", "question_type"])["judge_1"]
-      .mean()
-      .mul(100)
-      .reset_index()
-)
-print(score)
+```bash
+python reproducibility/scripts/verify_release.py
 ```
 
 ## Reproducing System Runs
 
-A full end-to-end rerun requires:
+A model-serving rerun requires:
 
 - the original LongMemEval-S and LoCoMo benchmark data;
 - OpenAI-compatible endpoints for the chat model and embedding model;
@@ -257,10 +228,12 @@ The main paper uses:
 
 - Qwen3-30B-A3B-Instruct-2507 and Qwen3-4B-Instruct-2507 as answer/build models;
 - Qwen3-Embedding-0.6B as the embedding model;
-- DeepSeek-V3.2 as the LLM judge;
+- DeepSeek-V4-Flash as the LLM judge;
 - vLLM with FlashAttention for model serving.
 
-Because full benchmark reruns depend on model-serving infrastructure and external benchmark licenses, this repository provides the per-question outputs used in the paper so that the reported tables can be independently checked from the released CSV files.
+Because benchmark reruns depend on model-serving infrastructure and external
+benchmark data, the release also provides core logs, per-question labels,
+manifests, and result tables for API-free verification.
 
 ## Module Overview
 
@@ -276,7 +249,9 @@ Because full benchmark reruns depend on model-serving infrastructure and externa
 
 ## Notes for Reviewers
 
-The fastest way to verify the main reported accuracy numbers is to inspect the CSV files in `benchmark/` and recompute pass@1 or pass@8 using the snippets above.
+The fastest way to verify the revised main results is to run
+`python reproducibility/scripts/verify_release.py` and inspect
+`reproducibility/results/public_judge_three_backbone/summary.csv`.
 
 The fastest way to inspect the system implementation is to start from:
 
@@ -290,11 +265,14 @@ The fastest way to inspect the system implementation is to start from:
 
 The artifact supports three levels of reproducibility:
 
-1. **Direct result verification**: use the released CSV files in `benchmark/` to recompute the reported pass@1 and pass@8 numbers.
+1. **Direct result verification**: use the revision summaries, per-question
+   labels, manifests, and offline verifier under `reproducibility/`.
 2. **Pipeline inspection**: inspect the source code, prompts, configurations, and logging utilities.
-3. **Full rerun**: rerun the system with compatible model-serving infrastructure and the original benchmark data.
+3. **Model-serving rerun**: rerun released components with compatible model
+   services and the original benchmark data.
 
-The first level is lightweight and does not require GPUs. The full rerun requires external model-serving resources.
+The first level is lightweight and does not require GPUs. Model-serving reruns
+require external compute and benchmark access.
 
 ## License
 

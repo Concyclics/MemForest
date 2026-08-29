@@ -18,21 +18,35 @@ Install `aiohttp`, copy `mem0_adapter.py` to
 
 ```bash
 git -C EverMemOS apply \
-  ../MemForestSubmit/reproducibility/baselines/mem0/evermemos_reference_date.patch
+  /path/to/MemForest/reproducibility/baselines/mem0/evermemos_reference_date.patch
 ```
 
-The essential correction is in `_add_user_messages`: the first benchmark
-message timestamp in each batch is normalized to UTC and written to both
-`metadata.created_at` and `metadata.event_time`. Search results from both
-participant perspectives are then globally reduced to one final `k=10` context.
-The small EverMemOS patch prepends the benchmark `question_date` to the answer
-context when supplied by the evaluation stage.
+The essential correction is in `_add_user_messages`. Add batches are bounded by
+source session, and that session's benchmark time is normalized to UTC. The
+evaluated local REST path writes it to both `metadata.created_at` and
+`metadata.event_time`; the SDK fallback passes the same value through Mem0's
+`timestamp` argument. Search results from both participant perspectives are
+then globally reduced to one final `k=10` context. The small EverMemOS patch
+prepends the benchmark `question_date` to the answer context when supplied by
+the evaluation stage.
 
 The local REST server should be configured with the selected generation and
-embedding endpoints, isolated Qdrant storage, and graph memory disabled. Run
-each conversation in only one shard. After execution, require exactly 500 add,
-search, answer, and judge records and verify that temporal contexts contain
-benchmark dates rather than server wall-clock dates.
+embedding endpoints, a fresh Qdrant collection, and graph memory disabled. Run
+each conversation in only one shard. The released LoCoMo correction rerun
+contains 1,986 answer/search/top-10 records and 1,696 timestamp-audit rows for
+each of Qwen3-4B, Qwen3-30B, and Gemma-4-12B, with no invalid timestamps,
+coverage errors, or blank answers. The LongMemEval-S protocol uses 500
+questions.
+
+The exact rerun protocol and checks are recorded in:
+
+- [`../../results/mem0_corrected/timestamp_rerun_manifest.json`](../../results/mem0_corrected/timestamp_rerun_manifest.json);
+- [`../../results/mem0_corrected/timestamp_validation_summary.csv`](../../results/mem0_corrected/timestamp_validation_summary.csv).
+
+The manifest records the evaluated adapter SHA-256 and the released adapter
+SHA-256 separately. The released file preserves the evaluated timestamp and
+batching logic with formatting and comment cleanup; the offline verifier checks
+its recorded hash.
 
 ## Retrieval-budget audit
 

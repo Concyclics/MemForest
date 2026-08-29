@@ -1,0 +1,4 @@
+model_label,valid,answers,unique_answer_qids,search_rows,top10_rows,timestamp_audit_rows,timestamp_audit_expected,source_groups,invalid_timestamp_rows,batch_coverage_errors,blank_answers,years
+qwen3_4b,true,1986,1986,1986,1986,1696,1696,20,0,0,0,"2022:4617;2023:14857;2024:386"
+qwen3_30b,true,1986,1986,1986,1986,1696,1696,20,0,0,0,"2022:4604;2023:14876;2024:380"
+gemma4_12b,true,1986,1986,1986,1986,1696,1696,20,0,0,0,"2022:4712;2023:14640;2024:508"

@@ -34,6 +34,8 @@
   },
   "results": {
     "mem0_corrected": "results/mem0_corrected",
+    "mem0_timestamp_rerun_manifest": "results/mem0_corrected/timestamp_rerun_manifest.json",
+    "mem0_timestamp_validation": "results/mem0_corrected/timestamp_validation_summary.csv",
     "mem0_retrieval_budget_store_profile": "results/mem0_corrected/retrieval_budget_store_profile.json",
     "mem0_top50_top200_control": "results/mem0_corrected/top50_top200_control",
     "semantic_audit": "results/semantic_audit",
@@ -50,6 +52,7 @@
     "index": "baselines/README.md",
     "evermemos": "baselines/evermemos",
     "mem0": "baselines/mem0",
+    "mem0_corrected_adapter": "baselines/mem0/mem0_adapter.py",
     "lightmem": "baselines/lightmem",
     "memoryos": "baselines/memoryos",
     "mempalace": "baselines/mempalace",

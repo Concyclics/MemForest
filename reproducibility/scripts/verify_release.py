@@ -111,6 +111,54 @@ def check_mem0() -> None:
     assert abs(float(contexts[200]["mean_prompt_tokens"]) - 7919.126) < 1e-12
     assert int(contexts[200]["stores_exhausted"]) == 40
 
+    rerun_manifest = read_json(
+        ROOT / "results" / "mem0_corrected" / "timestamp_rerun_manifest.json"
+    )
+    assert rerun_manifest["protocol_id"] == (
+        "mem0_timestamp_corrected_locomo_global_top10_v1_20260728"
+    )
+    assert rerun_manifest["api_mode"] == "local_rest"
+    assert rerun_manifest["conversation_shards"] == 10
+    assert rerun_manifest["final_retrieval_top_k"] == 10
+    assert rerun_manifest["keys_recorded"] is False
+    assert "metadata.created_at" in rerun_manifest["timestamp_policy"]
+    assert "metadata.event_time" in rerun_manifest["timestamp_policy"]
+    assert "may not cross source sessions" in rerun_manifest["timestamp_policy"]
+    assert rerun_manifest["evaluated_adapter_sha256"] == (
+        "a370b2eebac03215045b7b8171c1a13b3c2b0feaed3a1bf83c07bcea1b2b73a1"
+    )
+    released_adapter = ROOT / "baselines" / "mem0" / "mem0_adapter.py"
+    assert rerun_manifest["released_adapter_sha256"] == sha256(released_adapter)
+    assert {model["model_label"] for model in rerun_manifest["models"]} == {
+        "qwen3_4b",
+        "qwen3_30b",
+        "gemma4_12b",
+    }
+
+    validation_path = (
+        ROOT / "results" / "mem0_corrected" / "timestamp_validation_summary.csv"
+    )
+    with validation_path.open(encoding="utf-8", newline="") as handle:
+        validation_rows = list(csv.DictReader(handle))
+    assert len(validation_rows) == 3
+    assert {row["model_label"] for row in validation_rows} == {
+        "qwen3_4b",
+        "qwen3_30b",
+        "gemma4_12b",
+    }
+    for row in validation_rows:
+        assert row["valid"].lower() == "true"
+        assert int(row["answers"]) == 1986
+        assert int(row["unique_answer_qids"]) == 1986
+        assert int(row["search_rows"]) == 1986
+        assert int(row["top10_rows"]) == 1986
+        assert int(row["timestamp_audit_rows"]) == 1696
+        assert int(row["timestamp_audit_expected"]) == 1696
+        assert int(row["source_groups"]) == 20
+        assert int(row["invalid_timestamp_rows"]) == 0
+        assert int(row["batch_coverage_errors"]) == 0
+        assert int(row["blank_answers"]) == 0
+
 
 def check_gemma() -> None:
     root = ROOT / "results" / "gemma"
