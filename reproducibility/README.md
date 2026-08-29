@@ -107,7 +107,8 @@ third-party repositories.
 
 ## Data policy
 
-Per-question release files retain the benchmark question, gold answer,
-generated answer, model identifier, judge label, and prompt version. Local
-absolute paths, service URLs, credentials, and database directories are
-removed. No API key is stored in this repository.
+Release files retain the fields needed for their stated check, such as labels,
+aggregate metrics, hashes, and source identifiers; selected diagnostic files
+also include questions, gold answers, or generated answers. Local absolute
+paths, service URLs, credentials, and database directories are removed. No API
+key is stored in this repository.
