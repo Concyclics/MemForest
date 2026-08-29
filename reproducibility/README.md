@@ -9,6 +9,9 @@ repository rather than to a separate anonymized archive.
 - [`paper/MemForest_full_revision.pdf`](paper/MemForest_full_revision.pdf):
   public complete paper with the supplementary diagnostics omitted from the
   length-limited submission PDF.
+- [`paper/MemForest_response_full_revision.pdf`](paper/MemForest_response_full_revision.pdf):
+  combined revision response, revised paper, references, and Appendices A--F
+  for reviewer inspection and author-side trimming.
 - [`BASELINES.md`](BASELINES.md): pinned upstream versions, local deployment
   boundaries, timestamp policy, retrieval budget, and reproduction procedure.
 - [`baselines/`](baselines/): pinned code overlays, configs, licenses, and

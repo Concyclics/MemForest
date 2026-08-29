@@ -38,8 +38,12 @@ results, and sanitized per-question data.
 
 Start with:
 
+- [`reproducibility/paper/MemForest_response_full_revision.pdf`](reproducibility/paper/MemForest_response_full_revision.pdf)
+  for the combined response, revised paper, references, and complete public
+  appendix;
 - [`reproducibility/paper/MemForest_full_revision.pdf`](reproducibility/paper/MemForest_full_revision.pdf)
-  for the response, revised paper, and complete public appendix;
+  for the revised paper, references, and complete public appendix without the
+  response;
 - [`reproducibility/BASELINES.md`](reproducibility/BASELINES.md) for baseline
   setup and reproduction boundaries;
 - [`reproducibility/PROTOCOL.md`](reproducibility/PROTOCOL.md) for the shared
