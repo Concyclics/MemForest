@@ -1,3 +1,5 @@
+
+
 # MemForest
 
 Supplementary artifact for the VLDB 2027 submission:
@@ -10,6 +12,7 @@ This repository provides the reference implementation, supplementary appendix, c
 
 - Main submission PDF: `paper/MemForest_VLDB_Final_12.pdf`
 - Supplementary appendix: `paper/MemForest_Supplementary_Appendix.pdf`
+- Public complete revision PDF: `reproducibility/paper/MemForest_full_revision.pdf`
 
 The main paper follows the 12-page PVLDB research-track submission format. The supplementary appendix contains additional derivations, prompts, ablation details, extended result tables, and implementation notes.
 
