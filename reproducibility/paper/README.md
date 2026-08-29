@@ -15,6 +15,6 @@ commit `017af279a7e22b21782733e9bc97b8ad1470c8b5`.
 PDF SHA-256 values:
 
 ```text
-MemForest_full_revision.pdf          d5010e8fb62a9c9ed2559c6d0902f1e8216b6fe03d5586b9e91b5d9aff9f140b
-MemForest_response_full_revision.pdf 094a3fe57923ca4cb27a06291b87905599028e035e6f047da4fcb126ea78dcc3
+MemForest_full_revision.pdf          dd0feba13119bba48e2a1047963585f3910adf9b1f86e342cc5992343788d931
+MemForest_response_full_revision.pdf 6ee3da45e26307d41685c6220791d7b1e626cbe72b52f352034ffa3dcd5c8a26
 ```
