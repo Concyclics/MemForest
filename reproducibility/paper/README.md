@@ -10,11 +10,11 @@
   inspection and later trimming.
 
 The code, configurations, and result artifacts linked from the PDF are pinned to
-commit `1ad5a5b8fa61482aa59e0a8ea8d53a2667576963`.
+commit `1f44a370eedf26c58eb7d2fa2c816d70bac26f04`.
 
 PDF SHA-256 values:
 
 ```text
-MemForest_full_revision.pdf          06ccbe7ab9ff2fbc6b395fc6bebd33df29e70dea5ae8557ca095f4047bc2b8ff
-MemForest_response_full_revision.pdf f2a097fd4949de82bfd02c94a896ac85101661d7d85a07249a3a12a2ddc24040
+MemForest_full_revision.pdf          a90ba01ef1a624921c8fbe45eb4d7932cf68de7f146654d441610615903c520e
+MemForest_response_full_revision.pdf dbf269200d8893f96ad793ff422894bc43b27f36369878dbf0d4cd9fbd6995c4
 ```
