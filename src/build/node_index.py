@@ -4,12 +4,13 @@ Dual-purpose:
   1. Recall: search(query_emb, top_n) → list[NodeEntry] for ForestRetriever
      Root-only FAISS index — one entry per tree for cleaner ranking.
   2. Browse: get_embedding(node_id) → list[float] for TreeBrowser
-     All non-L0 node embeddings stored for O(1) lookup at navigate time.
+     Embeddings of every node (root, internal, and L0 leaves) stored for O(1)
+     lookup at navigate time.
 
 Files on disk (under index_dir/):
     faiss.index         ← IndexFlatIP, normalized vectors (root nodes only)
     node_entries.json   ← list[{node_id, tree_id, level}], parallel to FAISS rows
-    emb_store.json      ← {node_id: embedding_list} for all non-L0 nodes
+    emb_store.json      ← {node_id: embedding_list} for every node, leaves included
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ class NodeIndex:
         self._entries: list[NodeEntry] = []
         self._embeddings: list[list[float]] = []
 
-        # All non-L0 embeddings for browse (root + L1 + L2 + ...)
+        # Embeddings of every node for browse (root, internal, and L0 leaves)
         self._emb_store: dict[str, list[float]] = {}
 
         # Cached FAISS index (rebuilt lazily, invalidated on add/remove)
