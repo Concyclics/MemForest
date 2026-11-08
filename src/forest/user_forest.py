@@ -494,11 +494,13 @@ class UserForest:
                 and root_node.level == 0
             )
             for node_id, node in tree.nodes.items():
-                if not node.summary or node.level == 0:
+                if not node.summary:
                     continue
                 is_root = node_id == root_id
                 if is_root:
                     level_str = "root"
+                elif node.level == 0:
+                    level_str = "L0"
                 elif node.level == 1:
                     level_str = "L1"
                 elif node.level == 2:
