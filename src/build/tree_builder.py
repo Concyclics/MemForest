@@ -410,9 +410,10 @@ class TreeBuilder:
     ) -> "NodeIndex":
         """Phase 3: build and save a NodeIndex from the current (or provided) trees.
 
-        Embeds all non-L0 nodes in batched API calls.
+        Embeds every node with a summary, leaves included, in batched API calls.
         - FAISS search index: root-only (one entry per tree for cleaner ranking).
-        - emb_store: all non-L0 nodes (root + L1 + L2) for TreeBrowser navigation.
+        - emb_store: every node (root, internal, and L0 leaves) for TreeBrowser
+          navigation, so embedding-guided browse can rank leaves as well.
 
         Args:
             trees: Trees to index. Defaults to all trees built so far.
@@ -430,8 +431,9 @@ class TreeBuilder:
 
         node_index = NodeIndex(index_dir=Path(index_dir), vector_dim=vector_dim)
 
-        # Collect all non-L0 nodes for embedding (needed by browse).
-        # L0 non-root nodes are never embedded.
+        # Collect every node for embedding (needed by browse). L0 leaves are
+        # browse-only (never searchable); without their embeddings the last
+        # browse level could not rank leaves and fell back to tree order.
         # Depth-0 scene trees (root=L0, single-fact) are embedded for browse
         # but excluded from FAISS search — their raw-fact embeddings are too
         # specific and crowd out larger trees in ranking.
@@ -448,12 +450,11 @@ class TreeBuilder:
             for node_id, node in tree.nodes.items():
                 if not node.summary:
                     continue
-                is_l0_non_root = node.level == 0 and node_id != root_id
-                if is_l0_non_root:
-                    continue
                 is_root = node_id == root_id
                 if is_root:
                     level_str = "root"
+                elif node.level == 0:
+                    level_str = "L0"
                 elif node.level == 1:
                     level_str = "L1"
                 elif node.level == 2:

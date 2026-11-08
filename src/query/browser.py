@@ -135,8 +135,9 @@ class TreeBrowser:
                     for rank, child in enumerate(ranked):
                         candidates.append((len(ranked) - rank, child))
                 else:
+                    embs = self._child_embeddings(children)
                     for child in children:
-                        emb = self._node_index.get_embedding(child.node_id)
+                        emb = embs.get(child.node_id)
                         score = _dot(sub_query_emb, emb) if emb else 0.0
                         candidates.append((score, child))
 
@@ -262,6 +263,27 @@ class TreeBrowser:
             return children
 
     # ── sub-query embedding ───────────────────────────────────────────────────
+
+    def _child_embeddings(self, children: "list[MemTreeNode]") -> dict[str, list[float]]:
+        """Embeddings for ranking children: stored NodeIndex vectors first; any
+        child without one (e.g. leaves in an index built before leaves were
+        embedded) is embedded on the fly in one batched call."""
+        out: dict[str, list[float]] = {}
+        missing: list["MemTreeNode"] = []
+        for child in children:
+            emb = self._node_index.get_embedding(child.node_id)
+            if emb:
+                out[child.node_id] = emb
+            elif child.summary:
+                missing.append(child)
+        if missing and self._emb_client is not None:
+            try:
+                raws = self._emb_client.embed_texts([c.summary for c in missing])
+                for child, raw in zip(missing, raws):
+                    out[child.node_id] = _normalize(raw)
+            except Exception:
+                pass
+        return out
 
     def _get_sub_query_emb(
         self,
