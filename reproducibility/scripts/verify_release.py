@@ -352,9 +352,58 @@ def check_public_judge_three_backbone() -> None:
         ("qwen3_4b", "memforest_embed", "locomo", "cat1-4"): 0.7662337662337663,
         ("qwen3_30b", "memforest_embed", "locomo", "cat1-4"): 0.8058441558441558,
         ("gemma4_12b", "evermemos", "locomo", "cat1-4"): 0.8857142857142857,
+        ("qwen3_4b", "mempalace", "longmemeval", "overall"): 0.668,
+        ("qwen3_30b", "mempalace", "longmemeval", "overall"): 0.598,
+        ("qwen3_4b", "mempalace", "longmemeval", "single-session-assistant"): 53 / 56,
+        ("qwen3_30b", "mempalace", "longmemeval", "single-session-assistant"): 51 / 56,
     }
     for key, expected_value in expected.items():
         assert abs(values[key] - expected_value) < 1e-12, (key, values[key])
+
+
+def check_mempalace_fullsession_ssa() -> None:
+    root = ROOT / "results" / "mempalace_fullsession_ssa"
+    expected = {
+        "qwen4b": ("qwen3_4b", "293a139ec142428e79ba091ba99a5aaa07bace9d68f098fe27a310ea4d5923c4"),
+        "qwen30b": ("qwen3_30b", "dd8a1353860da8fb6f4f1a0671a109839532b85a8c93624d057a74761a8b7911"),
+    }
+    with (ROOT / "results" / "public_judge_three_backbone" / "per_question_labels.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        labels = {
+            (row["model"], row["qid"]): row
+            for row in csv.DictReader(handle)
+            if row["method"] == "mempalace"
+            and row["benchmark"] == "longmemeval"
+            and row["question_type"] == "single-session-assistant"
+        }
+    judged = {(row["model"], row["qid"]): row for row in read_jsonl(root / "judged.jsonl")}
+    assert len(judged) == 112
+    for stem, (model, digest) in expected.items():
+        manifest = read_json(root / f"{stem}_records.manifest.json")
+        assert manifest["protocol_id"] == "mempalace_lme_ssa_full_session_v1_20261111"
+        assert manifest["model"] == model
+        assert manifest["answer_context"] == "full_retrieved_sessions"
+        assert manifest["native_top_k"] == 10
+        assert manifest["rows"] == 56
+        assert manifest["output_sha256"] == digest
+        assert sha256(root / f"{stem}_records.jsonl") == digest
+        rows = list(read_jsonl(root / f"{stem}_records.jsonl"))
+        assert len({row["qid"] for row in rows}) == 56
+        assert all(row["question_type"] == "single-session-assistant" for row in rows)
+        assert all(row["answer_context"] == "full_retrieved_sessions" for row in rows)
+        assert all(len(row["retrieved_ids"]) == 10 for row in rows)
+        assert all(0 < row["context_chars"] <= 60100 for row in rows)
+        for row in rows:
+            label = labels[(model, row["qid"])]
+            assert label["public_label"] == judged[(model, row["qid"])]["public_label"]
+            assert label["strict_label"] == ""
+            assert label["answer_source"].endswith(f"{stem}_records.jsonl:generated_answer")
+    judge = read_json(root / "judge_manifest.json")
+    assert judge["judge_model"] == "deepseek-v4-flash"
+    assert judge["api_key_recorded"] is False
+    assert judge["calibration"]["rows"] == 1176
+    assert judge["calibration"]["agreement"] == 1126
 
 
 def check_qwen_embed_main_protocol() -> None:
@@ -595,6 +644,7 @@ def main() -> None:
     check_judge_sensitivity()
     check_qwen_embed_main_protocol()
     check_public_judge_three_backbone()
+    check_mempalace_fullsession_ssa()
     check_semantic_audit()
     check_author_adjudicated_audit()
     check_deepseek_cost_probe()

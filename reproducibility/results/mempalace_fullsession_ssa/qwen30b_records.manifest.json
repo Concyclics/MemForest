@@ -1,0 +1,24 @@
+{
+ "protocol_id": "mempalace_lme_ssa_full_session_v1_20261111",
+ "model": "qwen3_30b",
+ "answer_model": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+ "benchmark": "longmemeval",
+ "question_type": "single-session-assistant",
+ "rows": 56,
+ "answer_context": "full_retrieved_sessions",
+ "answer_script": "reproducibility/baselines/mempalace/scripts/generate_longmemeval_answers.py",
+ "native_top_k": 10,
+ "max_context_chars": 60000,
+ "temperature": 0,
+ "max_tokens": 512,
+ "sources": {
+  "retrieval_source": "mempalace_longmemeval_gemma_8001_20260622_170723/retrieval/results.jsonl",
+  "retrieval_sha256": "d238ebe029371e38748b1c5f4917cc3068e352b0d9be8ff11a3f46023203e1ca",
+  "retrieval_note": "MemPalace retrieval uses only Qwen3-Embedding-0.6B, so the Gemma row's retrieval is reused unchanged.",
+  "dataset": "longmemeval_s_cleaned.json",
+  "dataset_sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+  "raw_answer_sha256": "12fb10629a06205313f364f0156b013352544292b4bae9d3999e318a8f93b97a"
+ },
+ "released_records": "qwen30b_records.jsonl",
+ "output_sha256": "dd8a1353860da8fb6f4f1a0671a109839532b85a8c93624d057a74761a8b7911"
+}

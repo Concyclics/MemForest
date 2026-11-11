@@ -369,5 +369,19 @@
     "retained_successful_calls": 59664
   },
   "input_sha256": "c00f067cb0e888aedfd8fcd04dd972605a6e42075e4fdafaaa0fe53af4fe5fd0",
-  "scope_note": "Frozen-answer regrade for unchanged methods. Mem0 retrieval, memory construction, and answer generation are replaced by timestamp-corrected global-top-10 artifacts for three backbones on LongMemEval-S and LoCoMo. Qwen MemForest-Embed uses native top-10 tree browsing with complete tree-unit expansion, the default answer prompt, and the same answer backbone as MemForest-Planner."
+  "scope_note": "Frozen-answer regrade for unchanged methods. Mem0 retrieval, memory construction, and answer generation are replaced by timestamp-corrected global-top-10 artifacts for three backbones on LongMemEval-S and LoCoMo. Qwen MemForest-Embed uses native top-10 tree browsing with complete tree-unit expansion, the default answer prompt, and the same answer backbone as MemForest-Planner.",
+  "supplementary_rows": {
+    "protocol_id": "mempalace_lme_ssa_full_session_v1_20261111",
+    "replaced_question_rows": 112,
+    "records": {
+      "qwen4b": {
+        "path": "reproducibility/results/mempalace_fullsession_ssa/qwen4b_records.jsonl",
+        "sha256": "293a139ec142428e79ba091ba99a5aaa07bace9d68f098fe27a310ea4d5923c4"
+      },
+      "qwen30b": {
+        "path": "reproducibility/results/mempalace_fullsession_ssa/qwen30b_records.jsonl",
+        "sha256": "dd8a1353860da8fb6f4f1a0671a109839532b85a8c93624d057a74761a8b7911"
+      }
+    }
+  }
 }
