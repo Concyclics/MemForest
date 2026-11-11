@@ -1,5 +1,5 @@
 {
-  "protocol_id": "vldb_revision_runtime_configs_v1_20260801",
+  "protocol_id": "runtime_configs_v1_20260801",
   "shared": {
     "generation_serving": "self-hosted OpenAI-compatible vLLM endpoints",
     "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
