@@ -14,5 +14,12 @@
   "all_question_rows_complete": true,
   "prompt_tokens": 51831455,
   "completion_tokens": 2120741,
-  "median_call_sec": 1.1059170230291784
+  "median_call_sec": 1.1059170230291784,
+  "supplementary_rows": {
+    "protocol_id": "mempalace_lme_ssa_full_session_v1_20261111",
+    "replaced_question_rows": 112,
+    "unresolved_question_rows": 0,
+    "scope": "qwen3_4b and qwen3_30b mempalace longmemeval single-session-assistant",
+    "records": "../mempalace_fullsession_ssa/"
+  }
 }
