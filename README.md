@@ -4,11 +4,14 @@ Code and experiment data for the ICDE 2027 second-round submission:
 
 **MemForest: Write-Efficient Agent Memory with Decoupled Extraction and Hierarchical View Maintenance**
 
+Paper: [`paper/MemForest_ICDE2027.pdf`](paper/MemForest_ICDE2027.pdf)
+
 ## Repository Layout
 
 ```text
 .
 ├── benchmark/              # Per-question answers of the Qwen3-4B and Qwen3-30B runs
+├── paper/                  # Paper PDF
 ├── reproducibility/        # Baseline code, evaluation code, scripts, manifests, and result data
 ├── src/                    # MemForest implementation
 │   ├── api/                # OpenAI-compatible chat and embedding clients
