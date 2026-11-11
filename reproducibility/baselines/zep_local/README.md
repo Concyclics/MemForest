@@ -25,11 +25,10 @@ concurrency. The runner:
 4. executes native Graphiti search and the MemoryData schema-aware answer path;
 5. saves build, query, answer, call/token, and completeness summaries.
 
-Use `summarize_run.py --run-root <path>` to aggregate completed lanes. Judge the
-resulting frozen answer JSONL with the released strict prompt recorded beside the
-released result summaries.
+Use `summarize_run.py --run-root <path>` to aggregate completed lanes.
 
-To reproduce the paper's native retrieval-budget table, run:
+Native retrieval-budget summary (tokenizes the serialized context, excluding
+the answer instruction and question):
 
 ```bash
 python reproducibility/scripts/summarize_zep_native_budget.py \
@@ -37,6 +36,3 @@ python reproducibility/scripts/summarize_zep_native_budget.py \
   --output reproducibility/results/zep_local/native_budget_summary.csv \
   --manifest reproducibility/results/zep_local/native_budget_manifest.json
 ```
-
-The script tokenizes the exact serialized context and excludes the answer
-instruction and question.

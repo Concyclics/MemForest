@@ -3,13 +3,10 @@
 Upstream: `https://github.com/EverMind-AI/EverMemOS`
 Commit: `539db77d5cc804c875246e34611fd266bf8c1e5d`
 
-`upstream.patch` contains the complete local-evaluation overlay used by our
-controlled EverMemOS runs. It adds OpenAI-compatible local model support,
-bounded parallel execution, complete per-stage logging, benchmark timestamp
-propagation, a global final retrieval budget, and resumable add/search/answer
-stages. The patch also contains the shared EverMemOS-harness changes used by
-the corrected Mem0 run; the standalone corrected Mem0 adapter is published in
-[`../mem0/`](../mem0/).
+`upstream.patch` adds OpenAI-compatible local model support, bounded parallel
+execution, per-stage logging, benchmark timestamp propagation, a global final
+retrieval budget, and resumable add/search/answer stages. It also contains the
+harness changes used by the Mem0 adapter in [`../mem0/`](../mem0/).
 
 Prepare a checkout:
 

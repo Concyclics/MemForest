@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify compact VLDB revision result artifacts without external services."""
+"""Verify released result artifacts without external services."""
 
 from __future__ import annotations
 
@@ -650,7 +650,7 @@ def main() -> None:
     check_deepseek_cost_probe()
     check_write_conflicts()
     check_async_core_snapshot()
-    print("revision release verification: PASS")
+    print("release verification: PASS")
 
 
 if __name__ == "__main__":

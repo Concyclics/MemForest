@@ -1,5 +1,5 @@
 {
-  "description": "Session-level MemTree write-concentration audit used in the R3-W3 response",
+  "description": "Session-level MemTree write-concentration audit",
   "source_run": "revision_e4_matched_build_20260716/submission_prompt_w512",
   "source_qids": [
     "28dc39ac",
